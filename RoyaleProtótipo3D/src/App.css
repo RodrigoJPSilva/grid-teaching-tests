@@ -1,0 +1,328 @@
+/* ============================================================
+   App.css — CSS Hacker Royale: Estilo Global Cyberpunk
+   ============================================================ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  width: 100%; height: 100%;
+  background: #0a0e14;
+  color: #c9d1d9;
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
+  overflow: hidden;
+}
+
+/* ── MENU ────────────────────────────────────────────────── */
+.menu-overlay {
+  position: fixed; inset: 0;
+  background: radial-gradient(ellipse at center, #0d1117 0%, #000 80%);
+  display: flex; justify-content: center; align-items: center;
+  z-index: 999;
+}
+
+.menu-box {
+  background: #161b22;
+  border: 1px solid #30363d;
+  padding: 50px 40px;
+  border-radius: 12px;
+  width: 420px;
+  text-align: center;
+  box-shadow: 0 0 60px rgba(0, 255, 100, 0.08), 0 0 2px rgba(0, 255, 100, 0.3);
+}
+
+.menu-title {
+  font-family: 'Orbitron', monospace;
+  color: #00ff66;
+  font-size: 2rem;
+  line-height: 1.2;
+  text-shadow: 0 0 20px rgba(0, 255, 100, 0.4);
+}
+
+.menu-sub {
+  color: #8b949e;
+  margin: 8px 0 30px;
+  font-size: 0.85rem;
+}
+
+.menu-field {
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.menu-field label {
+  display: block;
+  margin-bottom: 8px;
+  color: #c9d1d9;
+  font-weight: bold;
+  font-size: 0.85rem;
+}
+
+.menu-field input[type="range"] {
+  width: calc(100% - 50px);
+  accent-color: #00ff66;
+}
+
+.range-value {
+  display: inline-block;
+  width: 40px;
+  text-align: center;
+  color: #00ff66;
+  font-weight: bold;
+  font-size: 1.2rem;
+}
+
+.menu-field select {
+  width: 100%;
+  padding: 10px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.start-btn {
+  margin-top: 25px;
+  width: 100%;
+  padding: 16px;
+  background: linear-gradient(135deg, #238636, #2ea043);
+  color: #fff;
+  border: none;
+  font-weight: bold;
+  font-size: 1.1rem;
+  font-family: 'Orbitron', monospace;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.start-btn:hover {
+  transform: scale(1.03);
+  box-shadow: 0 0 20px rgba(46, 160, 67, 0.5);
+}
+
+/* ── LAYOUT PRINCIPAL ────────────────────────────────────── */
+.app-root {
+  width: 100%; height: 100%;
+  display: flex;
+  position: relative;
+}
+
+/* ── SIDEBAR (Editor CSS) ────────────────────────────────── */
+.sidebar {
+  width: 340px;
+  height: 100%;
+  background: #0d1117;
+  border-right: 1px solid #21262d;
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+}
+
+.editor-header {
+  padding: 14px 18px;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.85rem;
+  color: #58a6ff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.editor-icon {
+  background: #21262d;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #7ee787;
+}
+
+.editor-textarea {
+  flex: 1;
+  background: #0d1117;
+  color: #e6edf3;
+  border: none;
+  padding: 18px;
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
+  font-size: 0.95rem;
+  resize: none;
+  outline: none;
+  line-height: 1.6;
+  tab-size: 2;
+}
+
+.editor-textarea::selection {
+  background: rgba(88, 166, 255, 0.3);
+}
+
+.editor-textarea:focus {
+  box-shadow: inset 2px 0 0 #58a6ff;
+}
+
+.editor-actions {
+  padding: 12px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #21262d;
+  background: #161b22;
+}
+
+.action-btn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.9rem;
+  font-weight: bold;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.action-btn:hover:not(:disabled) { transform: scale(1.02); }
+.action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.bomb-btn { background: #da3633; color: #fff; }
+.bomb-btn:disabled { background: #8b1a1a; animation: pulse-red 1s infinite; }
+
+.sniper-btn { background: #1f6feb; color: #fff; }
+.sniper-btn:hover { background: #388bfd; }
+
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 5px #da3633; }
+  50% { box-shadow: 0 0 20px #ff4040; }
+}
+
+.room-indicator {
+  padding: 12px 18px;
+  background: #0d1117;
+  border-top: 1px solid #21262d;
+  font-size: 0.8rem;
+  color: #3fb950;
+  text-align: center;
+  font-family: 'Orbitron', monospace;
+}
+
+/* ── CANVAS ──────────────────────────────────────────────── */
+.canvas-container {
+  flex: 1;
+  position: relative;
+  background: #000;
+}
+
+/* ── MINI TERMINAL ───────────────────────────────────────── */
+.mini-terminal-overlay {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 650px;
+  max-width: 90%;
+  height: 360px;
+  background: rgba(5, 5, 10, 0.96);
+  border: 1px solid #00ff66;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  box-shadow: 0 0 30px rgba(0, 255, 100, 0.15), inset 0 0 60px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  backdrop-filter: blur(8px);
+}
+
+.terminal-header {
+  background: linear-gradient(90deg, #002200, #003300);
+  color: #00ff66;
+  padding: 10px 16px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #00ff66;
+}
+
+.close-btn {
+  background: none;
+  border: 1px solid #00ff66;
+  color: #00ff66;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 0.8rem;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+}
+.close-btn:hover { background: #00ff66; color: #000; }
+
+.terminal-history {
+  flex: 1;
+  padding: 14px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  color: #00ff66;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.terminal-line { line-height: 1.5; word-wrap: break-word; }
+.type-system { color: #58a6ff; }
+.type-error { color: #ff7b72; font-weight: bold; }
+.type-success { color: #3fb950; }
+.type-command { color: #e6edf3; opacity: 0.7; }
+.type-output { color: #00ff66; }
+
+.terminal-form {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  background: rgba(0, 20, 0, 0.6);
+  border-top: 1px dashed rgba(0, 255, 100, 0.3);
+}
+
+.terminal-prompt {
+  margin-right: 8px;
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+
+.terminal-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #00ff66;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.terminal-input::placeholder {
+  color: rgba(0, 255, 100, 0.25);
+}
+
+/* ── DICA DE ATALHO ──────────────────────────────────────── */
+.terminal-hint {
+  position: absolute;
+  bottom: 12px;
+  right: 16px;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 0.75rem;
+  pointer-events: none;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+kbd {
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 3px;
+  color: #c9d1d9;
+  display: inline-block;
+  font-size: 0.7rem;
+  padding: 1px 5px;
+}

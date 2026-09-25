@@ -1,0 +1,210 @@
+/* ============================================================
+   TerminalCmd.module.css — Terminal de Comando (CMD Simulator)
+   Turma 3DM SENAI Suíço-Brasileira
+   ============================================================ */
+
+.terminalWrapper {
+  display: flex;
+  flex-direction: column;
+  background: #0a0f0a;
+  border: 1px solid rgba(74, 222, 128, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  height: 100%;
+  min-height: 350px;
+  cursor: text;
+  box-shadow:
+    0 0 0 1px rgba(74, 222, 128, 0.05),
+    0 4px 20px rgba(0, 0, 0, 0.5),
+    inset 0 0 80px rgba(74, 222, 128, 0.02);
+}
+
+/* ── Barra de Título ──────────────────────────────────────── */
+.terminalTitleBar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(74, 222, 128, 0.06);
+  border-bottom: 1px solid rgba(74, 222, 128, 0.1);
+  flex-shrink: 0;
+}
+
+.terminalDots {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dotRed    { background: #ef4444; }
+.dotYellow { background: #f59e0b; }
+.dotGreen  { background: #22c55e; }
+
+.terminalTitle {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.7rem;
+  color: rgba(74, 222, 128, 0.5);
+  flex: 1;
+  text-align: center;
+  letter-spacing: 0.05em;
+}
+
+/* Indicador do Sonar Hacker */
+.sonarIndicator {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6rem;
+  color: rgba(74, 222, 128, 0.3);
+  border: 1px solid rgba(74, 222, 128, 0.15);
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.sonarOn {
+  color: #fbbf24;
+  border-color: #fbbf24;
+  animation: sonarGlow 1.5s ease-in-out infinite;
+}
+
+@keyframes sonarGlow {
+  0%, 100% { box-shadow: 0 0 4px rgba(251, 191, 36, 0.3); }
+  50%       { box-shadow: 0 0 12px rgba(251, 191, 36, 0.7); }
+}
+
+.sonarDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: sonarPing 1.5s ease-in-out infinite;
+}
+
+@keyframes sonarPing {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%       { transform: scale(1.4); opacity: 0.5; }
+}
+
+/* ── Área de Output ───────────────────────────────────────── */
+.terminalOutput {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  /* Efeito de scanlines sutis */
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+}
+
+.terminalOutput::-webkit-scrollbar {
+  width: 4px;
+}
+.terminalOutput::-webkit-scrollbar-track {
+  background: transparent;
+}
+.terminalOutput::-webkit-scrollbar-thumb {
+  background: rgba(74, 222, 128, 0.2);
+  border-radius: 2px;
+}
+
+/* ── Linhas do Terminal ───────────────────────────────────── */
+.line {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  animation: fadeInLine 0.2s ease-out;
+}
+
+@keyframes fadeInLine {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Cores por tipo de linha */
+.lineOutput  { color: rgba(226, 232, 240, 0.8); }
+.lineCommand { color: #93c5fd; }         /* azul — comando digitado */
+.lineError   { color: #f87171; }         /* vermelho — erro */
+.lineSuccess { color: #4ade80; }         /* verde — sucesso */
+.lineSystem  { color: rgba(251, 191, 36, 0.8); } /* amarelo — sistema */
+
+/* ── Linha de Input ───────────────────────────────────────── */
+.terminalInputRow {
+  display: flex;
+  align-items: center;
+  padding: 0.4rem 1rem 0.5rem;
+  border-top: 1px solid rgba(74, 222, 128, 0.1);
+  gap: 0.3rem;
+  background: rgba(74, 222, 128, 0.02);
+  flex-shrink: 0;
+}
+
+/* Prompt no estilo bash: hacker@arena:/path$ */
+.prompt {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.promptUser   { color: #a78bfa; }
+.promptAt     { color: rgba(226, 232, 240, 0.5); }
+.promptHost   { color: #60a5fa; }
+.promptColon  { color: rgba(226, 232, 240, 0.5); }
+.promptPath   { color: #4ade80; }
+.promptDollar {
+  color: rgba(226, 232, 240, 0.6);
+  margin-left: 0.2rem;
+}
+
+.terminalInput {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.78rem;
+  color: #e2e8f0;
+  caret-color: #4ade80;
+
+  /* Cursor piscante verde */
+  &::placeholder {
+    color: rgba(74, 222, 128, 0.2);
+    font-size: 0.7rem;
+  }
+}
+
+/* ── Dicas Rápidas ────────────────────────────────────────── */
+.quickTips {
+  display: flex;
+  gap: 1rem;
+  padding: 0.25rem 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.58rem;
+  color: rgba(74, 222, 128, 0.25);
+  flex-shrink: 0;
+}
+
+.tipActive {
+  color: #fbbf24 !important;
+  font-weight: bold;
+}
