@@ -21,6 +21,63 @@ const WAVES = {
   }
 };
 
+function checkBoxesOverlap(r1, c1, w1, h1, r2, c2, w2, h2) {
+  return !(r1 + h1 <= r2 || r1 >= r2 + h2 || c1 + w1 <= c2 || c1 >= c2 + w2);
+}
+
+function findFreePosition(arenaSize, size, playerPos, existingEnemies, currentEnemyId = null) {
+  const [ew, eh] = size;
+  const maxRow = arenaSize - eh + 1;
+  const maxCol = arenaSize - ew + 1;
+
+  // Tentar posições aleatórias
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const r = Math.floor(Math.random() * maxRow) + 1;
+    const c = Math.floor(Math.random() * maxCol) + 1;
+
+    // Colisão com o jogador (1x1)
+    if (checkBoxesOverlap(r, c, ew, eh, playerPos.row, playerPos.col, 1, 1)) {
+      continue;
+    }
+
+    // Colisão com outros inimigos vivos
+    let collision = false;
+    for (const other of Object.values(existingEnemies)) {
+      if (other.id === currentEnemyId || other.hp <= 0) continue;
+      const [or, oc] = other.position;
+      const [ow, oh] = other.size;
+      if (checkBoxesOverlap(r, c, ew, eh, or, oc, ow, oh)) {
+        collision = true;
+        break;
+      }
+    }
+
+    if (!collision) {
+      return [r, c];
+    }
+  }
+
+  // Fallback: varredura sequencial
+  for (let r = 1; r <= maxRow; r++) {
+    for (let c = 1; c <= maxCol; c++) {
+      if (checkBoxesOverlap(r, c, ew, eh, playerPos.row, playerPos.col, 1, 1)) continue;
+      let collision = false;
+      for (const other of Object.values(existingEnemies)) {
+        if (other.id === currentEnemyId || other.hp <= 0) continue;
+        const [or, oc] = other.position;
+        const [ow, oh] = other.size;
+        if (checkBoxesOverlap(r, c, ew, eh, or, oc, ow, oh)) {
+          collision = true;
+          break;
+        }
+      }
+      if (!collision) return [r, c];
+    }
+  }
+
+  return [1, 1]; // Fallback seguro
+}
+
 export function useGameState() {
   const [phase, setPhase] = useState('menu'); // menu, playing, gameover, victory
   const [difficulty, setDifficulty] = useState('Facil');
@@ -33,8 +90,24 @@ export function useGameState() {
   const lastPlayerPos = useRef({ col: 1, row: 1 });
   const [lastParsedPos, setLastParsedPos] = useState({ col: 1, row: 1 });
 
+  // Invulnerabilidade do Jogador (2 segundos)
+  const lastPlayerDamageTime = useRef(0);
+
   // Bombas atiradas pelos NPCs contra o jogador
   const [incomingBombs, setIncomingBombs] = useState([]);
+
+  // Dano ao jogador com respeito aos 2s de invulnerabilidade
+  const applyPlayerDamage = useCallback((amount = 1) => {
+    const now = Date.now();
+    if (now - lastPlayerDamageTime.current < 2000) return false;
+    lastPlayerDamageTime.current = now;
+    setPlayerHp(hp => {
+      const newHp = Math.max(0, hp - amount);
+      if (newHp === 0) setPhase('gameover');
+      return newHp;
+    });
+    return true;
+  }, []);
 
   // ── Controle de Fases ─────────────────────────────────────
   const spawnWave = useCallback((diff, level, customSize) => {
@@ -50,9 +123,10 @@ export function useGameState() {
       const bDelay = wave.bombDelay[i % wave.bombDelay.length];
       let tDelay = wave.teleDelay[i % wave.teleDelay.length];
       if (wave.teleDelay.length === 2 && wave.teleDelay[0] !== wave.teleDelay[1]) {
-         // Random range se forem dois valores
-         tDelay = Math.random() * (wave.teleDelay[1] - wave.teleDelay[0]) + wave.teleDelay[0];
+        tDelay = Math.random() * (wave.teleDelay[1] - wave.teleDelay[0]) + wave.teleDelay[0];
       }
+
+      const safePos = findFreePosition(customSize, wave.size, lastPlayerPos.current, newEnemies);
 
       newEnemies[id] = {
         id,
@@ -61,15 +135,13 @@ export function useGameState() {
         hp: wave.hp,
         maxHp: wave.hp,
         size: wave.size,
-        position: [
-          Math.floor(Math.random() * (customSize - wave.size[1])) + 1, // row
-          Math.floor(Math.random() * (customSize - wave.size[0])) + 1, // col
-        ],
+        position: safePos,
         revealed: true,
         bombDelay: bDelay,
         teleDelay: tDelay,
         lastBombTime: Date.now(),
         lastTeleTime: Date.now(),
+        lastDamageTime: 0,
         bombsToFire: wave.bombs
       };
     }
@@ -81,6 +153,7 @@ export function useGameState() {
     setDifficulty(diff);
     setArenaSize(customSize);
     setPlayerHp(3);
+    lastPlayerDamageTime.current = 0;
     setPhase('playing');
     setIncomingBombs([]);
     spawnWave(diff, 1, customSize);
@@ -91,7 +164,6 @@ export function useGameState() {
     if (phase !== 'playing') return;
     const aliveCount = Object.values(enemies).filter(e => e.hp > 0).length;
     if (aliveCount === 0 && Object.keys(enemies).length > 0) {
-      // Avançar de fase após pequeno delay
       const t = setTimeout(() => {
         spawnWave(difficulty, currentLevel + 1, arenaSize);
       }, 2000);
@@ -127,7 +199,6 @@ export function useGameState() {
             eCopy.isChargingBomb = false;
             didSomething = true;
             
-            // Gerar bombas direcionadas ou aleatórias
             for (let i = 0; i < eCopy.bombsToFire; i++) {
               setTimeout(() => {
                 const targetCol = Math.floor(Math.random() * arenaSize) + 1;
@@ -138,17 +209,14 @@ export function useGameState() {
                   shooterPos: [eCopy.position[1], eCopy.position[0]],
                   shooterType: eCopy.type
                 }]);
-              }, i * 500); // Espaçar tiros múltiplos
+              }, i * 500);
             }
           }
 
-          // 2. Teleporte
+          // 2. Teleporte sem sobreposição
           if (now - eCopy.lastTeleTime > eCopy.teleDelay) {
             eCopy.lastTeleTime = now;
-            eCopy.position = [
-              Math.floor(Math.random() * (arenaSize - eCopy.size[1])) + 1,
-              Math.floor(Math.random() * (arenaSize - eCopy.size[0])) + 1,
-            ];
+            eCopy.position = findFreePosition(arenaSize, eCopy.size, lastPlayerPos.current, updated, eCopy.id);
             didSomething = true;
           }
 
@@ -161,13 +229,12 @@ export function useGameState() {
         return changed ? updated : prev;
       });
       
-    }, 1000); // Check every second
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [phase, arenaSize]);
 
   // ── Resolução de Bombas Inimigas ─────────────────────────
-  // Bombas explodem após 3 segundos
   useEffect(() => {
     if (incomingBombs.length === 0 || phase !== 'playing') return;
 
@@ -179,10 +246,8 @@ export function useGameState() {
         const remaining = [];
         prev.forEach(b => {
           if (now - b.spawnTime > 3000) {
-            // Explodiu!
             const pr = lastPlayerPos.current.row;
             const pc = lastPlayerPos.current.col;
-            // Area 3x3
             if (Math.abs(pr - b.row) <= 1 && Math.abs(pc - b.col) <= 1) {
               hitPlayer = true;
             }
@@ -194,33 +259,30 @@ export function useGameState() {
       });
 
       if (hitPlayer) {
-        setPlayerHp(hp => {
-          const newHp = Math.max(0, hp - 1);
-          if (newHp === 0) setPhase('gameover');
-          return newHp;
-        });
+        applyPlayerDamage(1);
       }
 
     }, 500);
 
     return () => clearInterval(interval);
-  }, [incomingBombs, phase]);
+  }, [incomingBombs, phase, applyPlayerDamage]);
 
   // ── Ataques do Jogador ────────────────────────────────────
   const checkEnemyHit = useCallback((enemy, tr, tc) => {
-    // Checa se tr, tc (linha, coluna) cai dentro da área do inimigo (baseado em enemy.size)
     const [er, ec] = enemy.position;
     const [ew, eh] = enemy.size;
     return (tr >= er && tr < er + eh && tc >= ec && tc < ec + ew);
   }, []);
 
   const fireBomb = useCallback((col, row) => {
+    const now = Date.now();
     setEnemies(prev => {
       const updated = { ...prev };
       Object.values(updated).forEach(enemy => {
         if (enemy.hp <= 0) return;
+        // Invulnerabilidade de 2 segundos durante piscamento de dano
+        if (enemy.lastDamageTime && now - enemy.lastDamageTime < 2000) return;
         
-        // Área 3x3 da bomba do jogador
         let isHit = false;
         for (let r = row - 1; r <= row + 1; r++) {
           for (let c = col - 1; c <= col + 1; c++) {
@@ -228,19 +290,25 @@ export function useGameState() {
           }
         }
         
-        if (isHit) updated[enemy.id] = { ...enemy, hp: Math.max(0, enemy.hp - 1) };
+        if (isHit) {
+          updated[enemy.id] = { ...enemy, hp: Math.max(0, enemy.hp - 1), lastDamageTime: now };
+        }
       });
       return updated;
     });
   }, [checkEnemyHit]);
 
   const fireSniper = useCallback((col, row) => {
+    const now = Date.now();
     setEnemies(prev => {
       const updated = { ...prev };
       Object.values(updated).forEach(enemy => {
         if (enemy.hp <= 0) return;
+        // Invulnerabilidade de 2 segundos durante piscamento de dano
+        if (enemy.lastDamageTime && now - enemy.lastDamageTime < 2000) return;
+
         if (checkEnemyHit(enemy, row, col)) {
-          updated[enemy.id] = { ...enemy, hp: Math.max(0, enemy.hp - 3) };
+          updated[enemy.id] = { ...enemy, hp: Math.max(0, enemy.hp - 3), lastDamageTime: now };
         }
       });
       return updated;
@@ -251,6 +319,7 @@ export function useGameState() {
     phase, setPhase, startGame, arenaSize,
     difficulty, currentLevel,
     enemies, playerHp, setPlayerHp,
+    applyPlayerDamage,
     lastPlayerPos, lastParsedPos, setLastParsedPos,
     fireBomb, fireSniper,
     incomingBombs

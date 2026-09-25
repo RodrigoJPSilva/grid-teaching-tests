@@ -16,46 +16,81 @@ const FLOOR_COLOR = '#0a1e1e';
 const EDGE_COLOR = '#00ddaa';
 const WALL_COLOR = '#081818';
 
-function FloorCell({ col, row, x, z, isOccupied, isHit, onTileClick }) {
+function FloorCell({ col, row, x, z, isOccupied, isHit, isPreview, waveHits = [], onTileClick }) {
   const meshRef = useRef();
   const meshMatRef = useRef();
   const edgesMatRef = useRef();
-  
-  const targetY = (isHit || isOccupied) ? 0.2 : -0.01;
-  const targetEdgeColor = new THREE.Color(
-    isHit ? '#f87171' : 
-    isOccupied === 'player' ? '#4ade80' : 
-    isOccupied === 'npc' ? '#f87171' : 
-    EDGE_COLOR
-  );
-
-  const targetBgColor = new THREE.Color(
-    isHit ? '#440000' : 
-    isOccupied === 'player' ? '#003322' : 
-    isOccupied === 'npc' ? '#440000' : 
-    FLOOR_COLOR
-  );
-
-  const targetEmissive = new THREE.Color(
-    isHit ? '#ff0000' : 
-    isOccupied === 'player' ? '#00ff88' : 
-    isOccupied === 'npc' ? '#ff3333' : 
-    '#000000'
-  );
-
-  const targetIntensity = (isHit || isOccupied) ? 0.4 : 0;
 
   useFrame((state, delta) => {
+    const now = Date.now();
+    let maxWaveY = 0;
+    let isWaveActive = false;
+
+    for (let i = 0; i < waveHits.length; i++) {
+      const w = waveHits[i];
+      const dist = Math.hypot(col - w.col, row - w.row);
+      if (dist <= 1.5) {
+        const delay = dist * 120; // 120ms de atraso propagando do centro para as bordas
+        const elapsed = now - w.time - delay;
+        if (elapsed > 0 && elapsed < 650) {
+          const p = elapsed / 650;
+          const wave = Math.sin(p * Math.PI) * 0.55;
+          if (wave > maxWaveY) {
+            maxWaveY = wave;
+            isWaveActive = true;
+          }
+        }
+      }
+    }
+
+    const baseY = (isHit || isOccupied || isPreview) ? 0.2 : -0.01;
+    const targetY = baseY + maxWaveY;
+
+    const targetEdgeColor = new THREE.Color(
+      isWaveActive ? '#f87171' :
+      isHit ? '#f87171' :
+      isOccupied === 'npc-targeted' ? '#2CFF05' :
+      isOccupied === 'player' ? '#4ade80' :
+      isOccupied === 'npc' ? '#f87171' :
+      isPreview === 'preview-player' ? '#4ade80' :
+      (isPreview === 'preview-bomb' || isPreview === 'preview-sniper') ? '#ffffff' :
+      EDGE_COLOR
+    );
+
+    const targetBgColor = new THREE.Color(
+      isWaveActive ? '#440000' :
+      isHit ? '#440000' :
+      isOccupied === 'npc-targeted' ? '#003311' :
+      isOccupied === 'player' ? '#003322' :
+      isOccupied === 'npc' ? '#440000' :
+      isPreview === 'preview-player' ? '#003322' :
+      (isPreview === 'preview-bomb' || isPreview === 'preview-sniper') ? '#ffffff' :
+      FLOOR_COLOR
+    );
+
+    const targetEmissive = new THREE.Color(
+      isWaveActive ? '#ff0000' :
+      isHit ? '#ff0000' :
+      isOccupied === 'npc-targeted' ? '#2CFF05' :
+      isOccupied === 'player' ? '#00ff88' :
+      isOccupied === 'npc' ? '#ff3333' :
+      isPreview === 'preview-player' ? '#00ff88' :
+      (isPreview === 'preview-bomb' || isPreview === 'preview-sniper') ? '#ffffff' :
+      '#000000'
+    );
+
+    const targetIntensity = isWaveActive ? (0.4 + (maxWaveY / 0.55) * 0.8) : (isOccupied === 'npc-targeted' ? 0.7 : ((isHit || isOccupied || isPreview) ? 0.4 : 0));
+
     if (meshRef.current) {
-      meshRef.current.position.y = THREE.MathUtils.lerp(meshRef.current.position.y, targetY, delta * 8);
+      meshRef.current.position.y = THREE.MathUtils.lerp(meshRef.current.position.y, targetY, delta * 12);
     }
     if (edgesMatRef.current) {
-      edgesMatRef.current.color.lerp(targetEdgeColor, delta * 8);
+      edgesMatRef.current.color.lerp(targetEdgeColor, delta * 10);
     }
     if (meshMatRef.current) {
-      meshMatRef.current.color.lerp(targetBgColor, delta * 8);
-      meshMatRef.current.emissive.lerp(targetEmissive, delta * 8);
-      meshMatRef.current.emissiveIntensity = THREE.MathUtils.lerp(meshMatRef.current.emissiveIntensity, targetIntensity, delta * 8);
+      meshMatRef.current.color.lerp(targetBgColor, delta * 10);
+      meshMatRef.current.emissive.lerp(targetEmissive, delta * 10);
+      meshMatRef.current.emissiveIntensity = THREE.MathUtils.lerp(meshMatRef.current.emissiveIntensity, targetIntensity, delta * 10);
     }
   });
 
@@ -80,7 +115,7 @@ function WallSegment({ position, size }) {
   );
 }
 
-export default function VRFloor({ occupiedTiles = [], hitTiles = [], gridSize = 6, onTileClick }) {
+export default function VRFloor({ occupiedTiles = [], hitTiles = [], previewTiles = [], waveHits = [], gridSize = 6, onTileClick }) {
   const halfGrid = (gridSize - 1) / 2;
   const totalSize = gridSize * CELL_SIZE;
   const halfTotal = totalSize / 2;
@@ -105,12 +140,15 @@ export default function VRFloor({ occupiedTiles = [], hitTiles = [], gridSize = 
       {cells.map(c => {
         const occupant = occupiedTiles.find(t => t.col === c.col && t.row === c.row);
         const hitData = hitTiles.find(t => t.col === c.col && t.row === c.row);
-        
-        return <FloorCell 
-          key={c.key} col={c.col} row={c.row} x={c.x} z={c.z} 
-          isOccupied={occupant ? occupant.type : false} 
-          isHit={!!hitData} 
-          onTileClick={onTileClick} 
+        const previewData = previewTiles.find(t => t.col === c.col && t.row === c.row);
+
+        return <FloorCell
+          key={c.key} col={c.col} row={c.row} x={c.x} z={c.z}
+          isOccupied={occupant ? occupant.type : false}
+          isHit={!!hitData}
+          isPreview={previewData ? previewData.type : false}
+          waveHits={waveHits}
+          onTileClick={onTileClick}
         />;
       })}
 

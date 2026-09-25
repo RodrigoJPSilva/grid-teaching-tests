@@ -1,5 +1,5 @@
 // ============================================================
-//  CSS HACKER ROYALE — Game Constants & Data
+//  GRID BATTLEGROUNDS — Game Constants & Data
 //  Turma 3DM SENAI Suíço-Brasileira
 // ============================================================
 
@@ -144,7 +144,7 @@ export const VALID_COMMANDS = ['dir', 'cd', '..', 'code .', 'sonar', 'help', 'cl
  * Mensagens de boot do terminal.
  */
 export const BOOT_MESSAGES = [
-  { text: '> Inicializando CSS HACKER ROYALE v3.0...', delay: 0 },
+  { text: '> Inicializando GRID BATTLEGROUNDS v3.0...', delay: 0 },
   { text: '> Carregando módulos de combate...', delay: 300 },
   { text: '> Arena Grid [6x6] — ONLINE ✓', delay: 600 },
   { text: '> Sistemas de armas — ONLINE ✓', delay: 900 },

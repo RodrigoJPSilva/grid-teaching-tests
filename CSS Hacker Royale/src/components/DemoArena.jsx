@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { OrthographicCamera, OrbitControls } from '@react-three/drei';
+import { gridToPosition3D } from '../utils/GameEngine';
 import VRFloor from './VRFloor';
 import Player from './Player';
 import VoxelEnemy from './VoxelEnemy';
@@ -27,20 +28,45 @@ function LightBootSequence() {
   );
 }
 
+function SniperTrail({ startPos, endPos, startTime }) {
+  const meshRef = useRef();
+  const vStart = useMemo(() => new THREE.Vector3(...startPos), [startPos]);
+  const vEnd = useMemo(() => new THREE.Vector3(...endPos), [endPos]);
+  const length = vStart.distanceTo(vEnd);
+
+  useFrame(() => {
+    if (!meshRef.current) return;
+    const elapsed = Date.now() - startTime;
+    meshRef.current.material.opacity = Math.max(0, 1 - elapsed / 300);
+  });
+
+  if (Date.now() - startTime > 300) return null;
+
+  return (
+    <mesh
+      position={vStart.clone().lerp(vEnd, 0.5)}
+      quaternion={new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), vEnd.clone().sub(vStart).normalize())}
+    >
+      <boxGeometry args={[0.05, 0.05, length]} />
+      <meshBasicMaterial color="#00ffcc" transparent />
+    </mesh>
+  );
+}
+
 // Demo Scripting Engine
 export default function DemoArena({ type, onClose, onSwitch }) {
-  const [opacity, setOpacity] = useState(0); // For fade-in/out
+  const [opacity, setOpacity] = useState(0);
   const [phase, setPhase] = useState('fade-in');
   
   // Game states for demo
-  const [playerPos, setPlayerPos] = useState([1, 0, 1]);
-  const [enemyHp, setEnemyHp] = useState(100);
+  const [playerColRow, setPlayerColRow] = useState([2, 2]);
+  const [enemyHp, setEnemyHp] = useState(3);
   const [bombTrigger, setBombTrigger] = useState(0);
-  const [bombTarget, setBombTarget] = useState(null);
+  const [bombActive, setBombActive] = useState(false);
   const [bombCountdown, setBombCountdown] = useState(0);
   const [sniperTrigger, setSniperTrigger] = useState(0);
-  
-  const timerRef = useRef(null);
+  const [waveHits, setWaveHits] = useState([]);
+  const [hitTiles, setHitTiles] = useState([]);
 
   // Fade In
   useEffect(() => {
@@ -53,95 +79,112 @@ export default function DemoArena({ type, onClose, onSwitch }) {
         }
         return p + 0.1;
       });
-    }, 100);
+    }, 50);
     return () => clearInterval(fadeTimer);
   }, [type]);
 
-  // Main Script Loop
+  // Main Script Loop (Continuous smooth cycle)
   useEffect(() => {
     if (phase !== 'run') return;
 
-    let step = 0;
-    
+    let active = true;
+
     if (type === 'teleport') {
-      timerRef.current = setInterval(() => {
-        setPlayerPos([
-          Math.floor(Math.random() * 6) + 1,
-          0,
-          Math.floor(Math.random() * 6) + 1
-        ]);
-      }, 3000);
+      const interval = setInterval(() => {
+        if (!active) return;
+        const newCol = Math.floor(Math.random() * 5) + 1;
+        const newRow = Math.floor(Math.random() * 5) + 1;
+        // Evita cair em cima do inimigo em (5, 5)
+        if (newCol === 5 && newRow === 5) {
+          setPlayerColRow([3, 3]);
+        } else {
+          setPlayerColRow([newCol, newRow]);
+        }
+      }, 2500);
+
+      return () => {
+        active = false;
+        clearInterval(interval);
+      };
     } 
     else if (type === 'bomb') {
-      // Hold 2s -> Throw -> Travel 5s -> Reset 3s
       const runSequence = () => {
-        setPlayerPos([2, 0, 2]); // Reset
-        setBombTarget(null);
-        
+        if (!active) return;
+        setPlayerColRow([2, 2]);
+        setBombCountdown(5);
+        setBombActive(false);
+        setWaveHits([]);
+        setEnemyHp(3);
+
         setTimeout(() => {
-          setBombTrigger(Date.now());
-          setBombCountdown(5); // Simulated
-          setBombTarget([5, 0, 5]); // Enemy pos
-          
+          if (!active) return;
+          const now = Date.now();
+          setBombTrigger(now);
+          setBombActive(true);
+
+          let count = 5;
+          const countInterval = setInterval(() => {
+            count--;
+            setBombCountdown(count);
+            if (count <= 0) clearInterval(countInterval);
+          }, 1000);
+
           setTimeout(() => {
-             // Hit!
-             setEnemyHp(0);
-             setTimeout(() => {
-               // Fade out to reset
-               setPhase('fade-out');
-             }, 3000);
-          }, 5000); // 5s travel
-          
-        }, 2000); // Hold 2s
+            if (!active) return;
+            // Impacto da bomba aos 5 segundos
+            setBombActive(false);
+            setBombCountdown(0);
+            setWaveHits([{ col: 5, row: 5, time: Date.now() }]);
+            setEnemyHp(0);
+
+            setTimeout(() => {
+              if (!active) return;
+              runSequence();
+            }, 3000);
+          }, 5000);
+
+        }, 1500);
       };
+
       runSequence();
+      return () => { active = false; };
     }
     else if (type === 'sniper') {
-       // Hold 2s -> Shoot -> Reset 3s
-       const runSequence = () => {
-         setPlayerPos([2, 0, 2]); // Reset
-         
-         setTimeout(() => {
-           setSniperTrigger(Date.now());
-           setTimeout(() => {
-             setEnemyHp(0);
-             setTimeout(() => {
-               setPhase('fade-out');
-             }, 3000);
-           }, 100); // Instahit
-         }, 2000);
-       };
-       runSequence();
-    }
+      const runSequence = () => {
+        if (!active) return;
+        setPlayerColRow([2, 2]);
+        setEnemyHp(3);
+        setHitTiles([]);
 
-    return () => clearInterval(timerRef.current);
+        setTimeout(() => {
+          if (!active) return;
+          const now = Date.now();
+          setSniperTrigger(now);
+          setHitTiles([{ col: 5, row: 5, time: now }]);
+
+          setTimeout(() => {
+            if (!active) return;
+            setEnemyHp(0);
+
+            setTimeout(() => {
+              if (!active) return;
+              runSequence();
+            }, 3000);
+          }, 100);
+
+        }, 1500);
+      };
+
+      runSequence();
+      return () => { active = false; };
+    }
   }, [phase, type]);
-
-  // Fade Out & Reset
-  useEffect(() => {
-    if (phase === 'fade-out') {
-      let fadeTimer = setInterval(() => {
-        setOpacity(p => {
-          if (p <= 0) {
-            clearInterval(fadeTimer);
-            // Reset everything and go to fade-in
-            setEnemyHp(100);
-            setPlayerPos([1, 0, 1]);
-            setPhase('fade-in');
-            return 0;
-          }
-          return p - 0.1;
-        });
-      }, 100);
-      return () => clearInterval(fadeTimer);
-    }
-  }, [phase]);
 
   let description = "";
   let dynamicCode = "";
   if (type === 'teleport') {
     description = "Mova o jogador pelo grid. O teleporte usa a propriedade de grid para mover instantaneamente e esquivar de ataques.";
-    dynamicCode = `.player {\n  grid-column: ${playerPos[0]};\n  grid-row: ${playerPos[2]};\n}`;
+    dynamicCode = `.player {\n  grid-column: ${playerColRow[0]};\n  grid-row: ${playerColRow[1]};\n}`;
   } else if (type === 'bomb') {
     description = "Joga uma bomba explosiva no alvo. Atinge uma área 3x3 em volta do ponto de impacto e tira 1 vida.";
     dynamicCode = `.bomba {\n  grid-column: 5;\n  grid-row: 5;\n}`;
@@ -149,6 +192,17 @@ export default function DemoArena({ type, onClose, onSwitch }) {
     description = "Dispara instantaneamente em linha reta! Causa muito dano (3 vidas) mas acerta apenas 1 quadrado.";
     dynamicCode = `.sniper {\n  grid-column: 5;\n  grid-row: 5;\n}`;
   }
+
+  const playerPos3D = gridToPosition3D(playerColRow[0], playerColRow[1], 6);
+  const enemyPos3D = gridToPosition3D(5, 5, 6);
+
+  // O inimigo em (5, 5) muda de cor para #2CFF05 quando na mira (sniper ou bomba)
+  const isEnemyTargeted = type === 'bomb' || type === 'sniper';
+
+  const occupiedTiles = [
+    { col: playerColRow[0], row: playerColRow[1], type: 'player' },
+    { col: 5, row: 5, type: isEnemyTargeted ? 'npc-targeted' : 'npc' }
+  ];
 
   return (
     <div className="demo-overlay" style={{
@@ -193,13 +247,19 @@ export default function DemoArena({ type, onClose, onSwitch }) {
           <OrbitControls />
           <LightBootSequence />
           
-          <VRFloor occupiedTiles={[{col: playerPos[0], row: playerPos[2], type: 'player'}, {col: 5, row: 5, type: 'npc'}]} hitTiles={[]} gridSize={6} />
+          <VRFloor
+            occupiedTiles={occupiedTiles}
+            hitTiles={hitTiles}
+            waveHits={waveHits}
+            gridSize={6}
+          />
           
           <Player 
-             position={[(playerPos[0]-1-2.5)*1.2, 0.21, (playerPos[2]-1-2.5)*1.2]} 
+             position={playerPos3D}
              activeTool={type === 'bomb' ? 'bomba' : type === 'sniper' ? 'sniper' : null}
              throwTrigger={bombTrigger}
              shootTrigger={sniperTrigger}
+             lookAtTarget={isEnemyTargeted ? enemyPos3D : null}
           />
           
           <VoxelEnemy 
@@ -207,13 +267,34 @@ export default function DemoArena({ type, onClose, onSwitch }) {
              arenaSize={6}
           />
           
-          {bombTarget && bombTrigger > 0 && (
+          {/* BombArea da demonstração com clamping na arena 6x6 e cor #00ff88 */}
+          {type === 'bomb' && (bombCountdown > 0 || bombActive) && (
+            <BombArea
+              centerCol={5}
+              centerRow={5}
+              arenaSize={6}
+              color="#00ff88"
+            />
+          )}
+
+          {/* Bomba voadora da demonstração com ribbon trail e desaparecendo no impacto */}
+          {type === 'bomb' && bombActive && bombTrigger > 0 && (
              <Bomb 
-               startPos={[(playerPos[0]-1-2.5)*1.2, 0.21, (playerPos[2]-1-2.5)*1.2]} 
-               endPos={[(bombTarget[0]-1-2.5)*1.2, 0.21, (bombTarget[2]-1-2.5)*1.2]} 
+               startPos={playerPos3D} 
+               endPos={enemyPos3D} 
                startTime={bombTrigger} 
-               duration={5000} 
+               duration={5000}
+               shooterType="player"
              />
+          )}
+
+          {/* Sniper Trail da demonstração */}
+          {type === 'sniper' && sniperTrigger > 0 && (
+            <SniperTrail
+              startPos={[playerPos3D[0], 0.5, playerPos3D[2]]}
+              endPos={enemyPos3D}
+              startTime={sniperTrigger}
+            />
           )}
         </Canvas>
       </div>

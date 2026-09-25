@@ -1,5 +1,5 @@
 // ============================================================
-//  App.jsx — CSS Hacker Royale: Layout Principal
+//  App.jsx — Grid Battlegrounds: Layout Principal
 //  Editor de código CSS + Arena 3D + Cheatsheet
 // ============================================================
 
@@ -7,7 +7,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import Arena3D from './components/Arena3D';
 import { useGameState } from './hooks/useGameState';
 import { parsePlayerCode, getActiveEditorClass } from './utils/GameEngine';
-import DemoArena from './components/DemoArena';
+import MainMenu from './components/MainMenu';
 import './App.css';
 
 const EMPTY_CSS = `.player {
@@ -22,70 +22,6 @@ const EMPTY_CSS = `.player {
 
 }`;
 
-// ── Menu de Configuração (aparece antes do jogo) ────────────
-function ConfigMenu({ onStart, shouldClearCode, setShouldClearCode }) {
-  const [difficulty, setDifficulty] = useState('Facil');
-  const [gridSize, setGridSize] = useState(10);
-  const [activeDemo, setActiveDemo] = useState(null);
-
-  if (activeDemo) {
-    return <DemoArena type={activeDemo} onClose={() => setActiveDemo(null)} onSwitch={setActiveDemo} />;
-  }
-
-  return (
-    <div className="menu-overlay">
-      <div className="menu-box">
-        <h1 className="menu-title">CSS HACKER<br/>ROYALE</h1>
-        <p className="menu-sub">Projeto de aprendizado</p>
-
-        <div className="menu-field">
-          <label>TAMANHO DO GRID (10–30):</label>
-          <input
-            type="range" min="10" max="30" value={gridSize}
-            onChange={e => setGridSize(Number(e.target.value))}
-          />
-          <span className="range-value">{gridSize}x{gridSize}</span>
-        </div>
-
-        <div className="menu-field">
-          <label>DIFICULDADE:</label>
-          <select value={difficulty} onChange={e => setDifficulty(e.target.value)}>
-            <option value="Facil">Fácil</option>
-            <option value="Normal">Normal</option>
-            <option value="Matrix">Matrix</option>
-          </select>
-        </div>
-
-        <div className="menu-field" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <label style={{ margin: 0, cursor: 'pointer' }} htmlFor="clearCodeCheck">
-            LIMPAR CÓDIGO APÓS RODAR?
-          </label>
-          <input
-            id="clearCodeCheck"
-            type="checkbox"
-            checked={shouldClearCode}
-            onChange={e => setShouldClearCode(e.target.checked)}
-            style={{ transform: 'scale(1.5)', cursor: 'pointer' }}
-          />
-        </div>
-
-        <button className="start-btn" onClick={() => onStart(difficulty, gridSize)}>
-          ▶ INICIAR SISTEMA
-        </button>
-
-        <div style={{ marginTop: '30px', borderTop: '1px solid #333', paddingTop: '20px' }}>
-          <h3 style={{ color: '#fff', fontSize: '1rem', marginBottom: '10px' }}>Demonstrações (Preview):</h3>
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-            <button className="action-btn" onClick={() => setActiveDemo('teleport')}>Teletransporte</button>
-            <button className="action-btn" onClick={() => setActiveDemo('bomb')}>Bomba</button>
-            <button className="action-btn" onClick={() => setActiveDemo('sniper')}>Sniper</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Componente Principal ────────────────────────────────────
 export default function App() {
   const [cssCode, setCssCode] = useState(EMPTY_CSS);
@@ -93,32 +29,79 @@ export default function App() {
 
   const [bombCountdown, setBombCountdown] = useState(0);
   const [activeTool, setActiveTool] = useState(null);
-  
+
   const [bombThrowTrigger, setBombThrowTrigger] = useState(0);
   const [sniperShootTrigger, setSniperShootTrigger] = useState(0);
 
   // User Preference
   const [shouldClearCode, setShouldClearCode] = useState(true);
 
-  // States for the Cheatsheet
+  // States for the Cheatsheet and Alerts
   const [cheatsheetHovered, setCheatsheetHovered] = useState(false);
   const [clickedTile, setClickedTile] = useState(null); // {col, row}
+  const [gameAlert, setGameAlert] = useState(null);
+
+  useEffect(() => {
+    if (gameAlert) {
+      const timer = setTimeout(() => setGameAlert(null), 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [gameAlert]);
 
   const gameState = useGameState();
 
   // ── Ação Global: Rodar Código ──────────────────────────────
   const handleExecuteAll = () => {
     if (gameState.phase !== 'playing') return;
-    
+
     const parsedCurrent = parsePlayerCode(cssCode);
     const parsedCommitted = parsePlayerCode(committedCssCode);
-    
-    const playerMoved = 
-      parsedCurrent.player?.col !== parsedCommitted.player?.col || 
-      parsedCurrent.player?.row !== parsedCommitted.player?.row;
+
+    let targetCol = parsedCurrent.player?.col;
+    let targetRow = parsedCurrent.player?.row;
+
+    // 1. Clamping se estiver fora do grid disponível (-1 Vida)
+    if (targetCol !== undefined && targetRow !== undefined) {
+      if (targetCol < 1 || targetCol > gameState.arenaSize || targetRow < 1 || targetRow > gameState.arenaSize) {
+        targetCol = Math.max(1, Math.min(gameState.arenaSize, targetCol));
+        targetRow = Math.max(1, Math.min(gameState.arenaSize, targetRow));
+        gameState.applyPlayerDamage(1);
+        setGameAlert("⚠️ FORA DA ARENA! -1 Vida");
+      }
+
+      // 2. Checagem de Não Sobreposição com Inimigos/Boss
+      let collision = false;
+      for (const enemy of Object.values(gameState.enemies)) {
+        if (enemy.hp <= 0) continue;
+        const [er, ec] = enemy.position;
+        const [ew, eh] = enemy.size;
+        if (targetRow >= er && targetRow < er + eh && targetCol >= ec && targetCol < ec + ew) {
+          collision = true;
+          break;
+        }
+      }
+
+      if (collision) {
+        setGameAlert("⛔ ESPAÇO OCUPADO! Movimento cancelado.");
+        targetCol = gameState.lastPlayerPos.current.col;
+        targetRow = gameState.lastPlayerPos.current.row;
+      }
+    }
+
+    // Monta o CSS efetivo que será aplicado
+    let finalCssCode = cssCode;
+    if (targetCol !== undefined && targetRow !== undefined) {
+      finalCssCode = `.player {\n  grid-column: ${targetCol};\n  grid-row: ${targetRow};\n}\n` +
+        (parsedCurrent.bomba ? `.bomba {\n  grid-column: ${parsedCurrent.bomba.col};\n  grid-row: ${parsedCurrent.bomba.row};\n}\n` : '') +
+        (parsedCurrent.sniper ? `.sniper {\n  grid-column: ${parsedCurrent.sniper.col};\n  grid-row: ${parsedCurrent.sniper.row};\n}\n` : '');
+    }
+
+    const playerMoved =
+      targetCol !== parsedCommitted.player?.col ||
+      targetRow !== parsedCommitted.player?.row;
 
     // Aplica o movimento imediatamente visualmente no 3D
-    setCommittedCssCode(cssCode);
+    setCommittedCssCode(finalCssCode);
 
     let delay = 0;
     if (playerMoved) {
@@ -127,22 +110,20 @@ export default function App() {
 
     // Após o teleporte, processa os ataques se existirem no CSS atual
     setTimeout(() => {
-      
       if (parsedCurrent.bomba?.col && parsedCurrent.bomba?.row && bombCountdown === 0) {
         setBombCountdown(5);
         setBombThrowTrigger(Date.now());
       }
-      
+
       if (parsedCurrent.sniper?.col && parsedCurrent.sniper?.row) {
         gameState.fireSniper(parsedCurrent.sniper.col, parsedCurrent.sniper.row);
         setSniperShootTrigger(Date.now());
       }
-      
+
       // Apaga o código após a execução (se a opção estiver ativa)
       if (shouldClearCode) {
         setCssCode(EMPTY_CSS);
       }
-      
     }, delay);
   };
 
@@ -161,7 +142,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [gameState.phase, cssCode, committedCssCode, bombCountdown]); 
+  }, [gameState.phase, cssCode, committedCssCode, bombCountdown]);
 
   // ── 20s Bot Timer ─────────────────────────────────────────
   useEffect(() => {
@@ -199,10 +180,10 @@ export default function App() {
   // ── Render ────────────────────────────────────────────────
   if (gameState.phase === 'menu') {
     return (
-      <ConfigMenu 
-        onStart={gameState.startGame} 
-        shouldClearCode={shouldClearCode} 
-        setShouldClearCode={setShouldClearCode} 
+      <MainMenu
+        onStart={gameState.startGame}
+        shouldClearCode={shouldClearCode}
+        setShouldClearCode={setShouldClearCode}
       />
     );
   }
@@ -212,7 +193,7 @@ export default function App() {
 
   return (
     <div className="app-root">
-      
+
       {/* HUD Superior (Vidas) */}
       <div style={{ position: 'absolute', top: '20px', left: '20px', zIndex: 100, display: 'flex', gap: '20px', color: '#00ddaa', fontFamily: 'monospace', fontSize: '18px', background: 'rgba(0,0,0,0.7)', padding: '10px 20px', borderRadius: '4px', alignItems: 'center' }}>
         <div>♥ HP JOGADOR: {gameState.playerHp}/3</div>
@@ -220,21 +201,35 @@ export default function App() {
         <div style={{ color: '#fff', fontSize: '14px', marginLeft: '10px' }}>[Fase {gameState.currentLevel} - {gameState.difficulty}]</div>
       </div>
 
+      {/* Alerta de Jogo (Clamp / Colisão) */}
+      {gameAlert && (
+        <div style={{
+          position: 'absolute', top: '75px', left: '20px', zIndex: 110,
+          background: 'rgba(255, 30, 30, 0.85)', color: '#ffffff',
+          fontFamily: 'monospace', fontWeight: 'bold', fontSize: '16px',
+          padding: '8px 16px', borderRadius: '4px', border: '1px solid #ff5555',
+          boxShadow: '0 0 15px rgba(255, 0, 0, 0.6)',
+          animation: 'shake 0.3s infinite alternate'
+        }}>
+          {gameAlert}
+        </div>
+      )}
+
       {/* HUD Boss */}
       {activeBoss && (
-        <div style={{ 
-          position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)', 
-          width: '50%', zIndex: 100, background: 'rgba(0,0,0,0.8)', padding: '10px', 
+        <div style={{
+          position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
+          width: '50%', zIndex: 100, background: 'rgba(0,0,0,0.8)', padding: '10px',
           border: '2px solid #BC0001', borderRadius: '4px',
-          animation: 'shake 0.5s infinite alternate' 
+          animation: 'shake 0.5s infinite alternate'
         }}>
           <div style={{ color: '#BC0001', textAlign: 'center', fontWeight: 'bold', fontSize: '20px', marginBottom: '5px' }}>
             {activeBoss.name}
           </div>
           <div style={{ width: '100%', height: '20px', background: '#333' }}>
-            <div style={{ 
-              width: `${(activeBoss.hp / activeBoss.maxHp) * 100}%`, 
-              height: '100%', background: '#BC0001', transition: 'width 0.2s' 
+            <div style={{
+              width: `${(activeBoss.hp / activeBoss.maxHp) * 100}%`,
+              height: '100%', background: '#BC0001', transition: 'width 0.2s'
             }} />
           </div>
         </div>
@@ -242,16 +237,16 @@ export default function App() {
 
       {gameState.phase === 'gameover' && (
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(50,0,0,0.8)', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ff2222' }}>
-           <h1>GAME OVER</h1>
-           <button className="action-btn" onClick={() => window.location.reload()} style={{ marginTop: '20px' }}>REINICIAR SISTEMA</button>
+          <h1>GAME OVER</h1>
+          <button className="action-btn" onClick={() => window.location.reload()} style={{ marginTop: '20px' }}>REINICIAR SISTEMA</button>
         </div>
       )}
-      
+
       {gameState.phase === 'victory' && (
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,50,20,0.8)', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#00ffcc' }}>
-           <h1>SISTEMA HACKEADO COM SUCESSO!</h1>
-           <p>Você concluiu a dificuldade {gameState.difficulty}</p>
-           <button className="action-btn" onClick={() => window.location.reload()} style={{ marginTop: '20px' }}>VOLTAR AO MENU</button>
+          <h1>SISTEMA HACKEADO COM SUCESSO!</h1>
+          <p>Você concluiu a dificuldade {gameState.difficulty}</p>
+          <button className="action-btn" onClick={() => window.location.reload()} style={{ marginTop: '20px' }}>VOLTAR AO MENU</button>
         </div>
       )}
 
@@ -275,7 +270,7 @@ export default function App() {
           <button className="action-btn execute-btn" onClick={handleExecuteAll}>
             ▶ RODAR CÓDIGO (Ctrl+Enter)
           </button>
-          
+
           <button className="action-btn teleport-btn" onClick={handleExecuteAll}>
             🏃‍♂️ TELEPORTAR
           </button>
@@ -289,7 +284,7 @@ export default function App() {
               ? `💣 DETONANDO: ${bombCountdown}s`
               : '💣 DEPLOY BOMBA'}
           </button>
-          
+
           <button className="action-btn sniper-btn" onClick={handleExecuteAll}>
             🎯 DISPARAR SNIPER
           </button>
@@ -300,7 +295,9 @@ export default function App() {
       <div className="canvas-container">
         <Arena3D
           cssCode={committedCssCode}
+          previewCode={cssCode}
           enemies={gameState.enemies}
+          playerHp={gameState.playerHp}
           activeTool={currentRobotTool}
           playerRevealed={gameState.playerRevealed}
           setPlayerRevealed={gameState.setPlayerRevealed}
@@ -315,8 +312,8 @@ export default function App() {
       </div>
 
       {/* Folha de Dicas (Cheatsheet) */}
-      <div 
-        className="cheatsheet-container" 
+      <div
+        className="cheatsheet-container"
         onMouseEnter={() => setCheatsheetHovered(true)}
         onMouseLeave={() => setCheatsheetHovered(false)}
       >
@@ -328,11 +325,11 @@ export default function App() {
           <p>&nbsp;&nbsp;grid-column: X;</p>
           <p>&nbsp;&nbsp;grid-row: Y;</p>
           <p>&#125;</p>
-          <br/>
+          <br />
           <p>A <strong>.bomba</strong> atinge área 3x3 (-1 Vida).</p>
           <p>A <strong>.sniper</strong> atinge apenas o alvo final (-3 Vidas).</p>
-          <br/>
-          <br/>
+          <br />
+          <br />
           <p style={{ color: '#0055cc', fontStyle: 'italic', fontSize: '12px' }}>
             Dica secreta: clique em um bloco e volte aqui...
           </p>
