@@ -13,7 +13,10 @@ export default function Player({
   throwTrigger,
   shootTrigger,
   lookAtTarget,
-  damageTrigger
+  damageTrigger,
+  spawnTime = 0,
+  onLanded = null,
+  isAwaitingSpawn = false,
 }) {
   return (
     <RobotModel
@@ -26,6 +29,9 @@ export default function Player({
       shootTrigger={shootTrigger}
       lookAtTarget={lookAtTarget}
       damageTrigger={damageTrigger}
+      spawnTime={spawnTime}
+      onLanded={onLanded}
+      isAwaitingSpawn={isAwaitingSpawn}
     />
   );
 }

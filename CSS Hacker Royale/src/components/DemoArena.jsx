@@ -55,8 +55,8 @@ function SniperTrail({ startPos, endPos, startTime }) {
 
 // Demo Scripting Engine
 export default function DemoArena({ type, onClose, onSwitch }) {
-  const [opacity, setOpacity] = useState(0);
-  const [phase, setPhase] = useState('fade-in');
+  const [opacity] = useState(1);
+  const [phase] = useState('run');
   
   // Game states for demo
   const [playerColRow, setPlayerColRow] = useState([2, 2]);
@@ -67,21 +67,6 @@ export default function DemoArena({ type, onClose, onSwitch }) {
   const [sniperTrigger, setSniperTrigger] = useState(0);
   const [waveHits, setWaveHits] = useState([]);
   const [hitTiles, setHitTiles] = useState([]);
-
-  // Fade In
-  useEffect(() => {
-    let fadeTimer = setInterval(() => {
-      setOpacity(p => {
-        if (p >= 1) {
-          clearInterval(fadeTimer);
-          setPhase('run');
-          return 1;
-        }
-        return p + 0.1;
-      });
-    }, 50);
-    return () => clearInterval(fadeTimer);
-  }, [type]);
 
   // Main Script Loop (Continuous smooth cycle)
   useEffect(() => {

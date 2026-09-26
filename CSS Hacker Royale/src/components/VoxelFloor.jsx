@@ -1,6 +1,6 @@
 // ============================================================
 //  VoxelFloor.jsx — Chão da Arena em Voxel Art (Blocos 3D)
-//  Turma 3DM SENAI Suíço-Brasileira
+//  Projeto de aprendizado
 //
 //  Cada célula do CSS Grid 6x6 é um cubo plano (boxGeometry)
 //  posicionado no espaço 3D usando a função gridTo3D().

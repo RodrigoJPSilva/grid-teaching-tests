@@ -179,14 +179,14 @@ export function BombArea({ centerCol, centerRow, arenaSize = 10, color = '#00ff8
     const colsCount = maxCol - minCol + 1;
     const rowsCount = maxRow - minRow + 1;
 
-    width = colsCount * CELL_SIZE;
-    depth = rowsCount * CELL_SIZE;
+    width = rowsCount * CELL_SIZE;
+    depth = colsCount * CELL_SIZE;
 
     const midCol = (minCol + maxCol) / 2;
     const midRow = (minRow + maxRow) / 2;
 
-    cx = (midCol - 1 - halfGrid) * CELL_SIZE;
-    cz = (midRow - 1 - halfGrid) * CELL_SIZE;
+    cx = (midRow - 1 - halfGrid) * CELL_SIZE;
+    cz = (midCol - 1 - halfGrid) * CELL_SIZE;
   } else if (position) {
     cx = position[0];
     cz = position[2];
@@ -202,12 +202,13 @@ export function BombArea({ centerCol, centerRow, arenaSize = 10, color = '#00ff8
   }
 
   return (
-    <mesh position={[cx, 0.02, cz]} rotation={[-Math.PI / 2, 0, 0]}>
+    <mesh position={[cx, 0.02, cz]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={1}>
       <planeGeometry args={[width, depth]} />
       <meshBasicMaterial
         color={color}
         transparent
         opacity={0.25}
+        depthWrite={false}
         side={THREE.DoubleSide}
       />
     </mesh>

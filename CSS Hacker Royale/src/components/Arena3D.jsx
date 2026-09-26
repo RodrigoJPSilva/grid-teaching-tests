@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrthographicCamera, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { parsePlayerCode, gridToPosition3D } from '../utils/GameEngine';
@@ -41,7 +41,6 @@ function SniperTrail({ startPos, endPos, startTime }) {
   useFrame(() => {
     if (!meshRef.current) return;
     const elapsed = Date.now() - startTime;
-    // Fade out in 300ms
     meshRef.current.material.opacity = Math.max(0, 1 - elapsed / 300);
   });
 
@@ -56,6 +55,102 @@ function SniperTrail({ startPos, endPos, startTime }) {
   );
 }
 
+// ── Indicador de Área de Impacto da Onda de Choque do Boss (4x4 com Clamping no Grid) ────────
+function BossWaveImpactArea({ centerCol, centerRow, arenaSize = 10 }) {
+  const CELL_SIZE = 1.2;
+  const halfGrid = (arenaSize - 1) / 2;
+
+  // Limites da área 4x4 (1 piso de margem ao redor do Boss 2x2), rigidamente contida na arena
+  const minR = Math.max(1, Math.round(centerRow - 1.5));
+  const maxR = Math.min(arenaSize, Math.round(centerRow + 1.5));
+  const minC = Math.max(1, Math.round(centerCol - 1.5));
+  const maxC = Math.min(arenaSize, Math.round(centerCol + 1.5));
+
+  const rowsCount = Math.max(1, maxR - minR + 1);
+  const colsCount = Math.max(1, maxC - minC + 1);
+
+  const midRow = (minR + maxR) / 2;
+  const midCol = (minC + maxC) / 2;
+
+  const cx = (midRow - 1 - halfGrid) * CELL_SIZE;
+  const cz = (midCol - 1 - halfGrid) * CELL_SIZE;
+  const width = rowsCount * CELL_SIZE;
+  const depth = colsCount * CELL_SIZE;
+
+  return (
+    <mesh position={[cx, 0.015, cz]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={1}>
+      <planeGeometry args={[width, depth]} />
+      <meshBasicMaterial
+        color="#ffaa00"
+        transparent
+        opacity={0.22}
+        depthWrite={false}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
+  );
+}
+
+// ── Tremor Suave de Tela (Camera Shake) ───────────────────────────
+function CameraRig({ screenShakeTime }) {
+  useFrame(({ camera }) => {
+    if (!screenShakeTime) return;
+    const elapsed = Date.now() - screenShakeTime;
+    if (elapsed < 400) {
+      const intensity = (1 - elapsed / 400) * 0.25;
+      camera.position.x += (Math.random() - 0.5) * intensity;
+      camera.position.y += (Math.random() - 0.5) * intensity;
+    }
+  });
+  return null;
+}
+
+// ── Controlador Cinemático de Câmera da Aparição do Boss ─────────
+function CinematicCameraController({ introPhase, bossPos3D, defaultZoom = 40 }) {
+  const { camera } = useThree();
+  const controlsRef = useRef();
+
+  useFrame((state, delta) => {
+    if (!camera) return;
+
+    if (introPhase === 'zoom_in' || introPhase === 'boss_descent' || introPhase === 'mario_growth') {
+      if (bossPos3D) {
+        // Zoom e foco no Boss (0.5s de aproximação)
+        const targetX = bossPos3D[0] + 5;
+        const targetY = 6;
+        const targetZ = bossPos3D[2] + 5;
+        camera.position.x = THREE.MathUtils.lerp(camera.position.x, targetX, delta * 6);
+        camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, delta * 6);
+        camera.position.z = THREE.MathUtils.lerp(camera.position.z, targetZ, delta * 6);
+        camera.zoom = THREE.MathUtils.lerp(camera.zoom, 65, delta * 6);
+        if (controlsRef.current) {
+          controlsRef.current.target.lerp(new THREE.Vector3(bossPos3D[0], 0.5, bossPos3D[2]), delta * 6);
+          controlsRef.current.update();
+        }
+        camera.updateProjectionMatrix();
+      }
+    } else if (introPhase === 'zoom_out') {
+      // Retirando zoom de forma animada (0.5s) para a posição padrão frontal
+      camera.position.x = THREE.MathUtils.lerp(camera.position.x, 0, delta * 6);
+      camera.position.y = THREE.MathUtils.lerp(camera.position.y, 14, delta * 6);
+      camera.position.z = THREE.MathUtils.lerp(camera.position.z, 14, delta * 6);
+      camera.zoom = THREE.MathUtils.lerp(camera.zoom, defaultZoom, delta * 6);
+      if (controlsRef.current) {
+        controlsRef.current.target.lerp(new THREE.Vector3(0, 0, 0), delta * 6);
+        controlsRef.current.update();
+      }
+      camera.updateProjectionMatrix();
+    }
+  });
+
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      enabled={introPhase === null || introPhase === 'completed'}
+    />
+  );
+}
+
 export default function Arena3D({
   cssCode, previewCode, enemies,
   playerHp = 3,
@@ -63,10 +158,29 @@ export default function Arena3D({
   playerRevealed, setPlayerRevealed, lastPlayerPos,
   bombCountdown, bombThrowTrigger, sniperShootTrigger,
   arenaSize = 10, onTileClick,
-  incomingBombs = []
+  incomingBombs = [],
+  playerSpawnTime = 0,
+  difficulty = 'Normal',
+  onBossIntroChange = null,
+  triggerBossDescent = null,
+  completeBossIntro = null,
 }) {
   const [playerDamageTrigger, setPlayerDamageTrigger] = useState(0);
   const prevPlayerHp = useRef(playerHp);
+
+  // Tick de sincronização para elevação dos pisos durante o sky drop
+  const [, setSpawnTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const isPlayerSpawning = playerSpawnTime > 0 && (now - playerSpawnTime < 2500);
+      const isEnemySpawning = Object.values(enemies).some(e => e.spawnTime > 0 && (now - e.spawnTime < 3500));
+      if (isPlayerSpawning || isEnemySpawning) {
+        setSpawnTick(t => t + 1);
+      }
+    }, 50);
+    return () => clearInterval(interval);
+  }, [playerSpawnTime, enemies]);
 
   useEffect(() => {
     if (playerHp < prevPlayerHp.current) {
@@ -74,6 +188,7 @@ export default function Arena3D({
     }
     prevPlayerHp.current = playerHp;
   }, [playerHp]);
+
   const gameState = useMemo(() => parsePlayerCode(cssCode), [cssCode]);
   const previewState = useMemo(() => {
     try {
@@ -100,6 +215,124 @@ export default function Arena3D({
   const previewSniperPos3D = previewState?.sniper ? gridToPosition3D(previewState.sniper.col, previewState.sniper.row, arenaSize) : null;
 
   const enemiesInRoom = Object.values(enemies).filter(e => e.hp > 0);
+  const bossEnemy = enemiesInRoom.find(e => e.type === 'boss');
+
+  // ── Sequência Cinemática de Introdução do Boss ──────────────
+  const [bossIntroPhase, setBossIntroPhase] = useState(null);
+  // 'waiting_player' | 'zoom_in' | 'boss_descent' | 'mario_growth' | 'zoom_out' | 'hp_fill' | 'completed'
+  const [bossScale, setBossScale] = useState(1);
+  const [bossFootprint, setBossFootprint] = useState([1, 1]);
+  const bossIntroStartedRef = useRef(false);
+  const bossPhaseTimerRef = useRef(0);
+
+  // Iniciar sequência do Boss quando ele surge
+  useEffect(() => {
+    if (!bossEnemy) {
+      bossIntroStartedRef.current = false;
+      setBossIntroPhase(null);
+      setBossScale(1);
+      setBossFootprint([1, 1]);
+      return;
+    }
+
+    if (bossEnemy.isIntroActive && !bossIntroStartedRef.current) {
+      bossIntroStartedRef.current = true;
+      if (difficulty === 'Matrix') {
+        setBossIntroPhase('waiting_player');
+        bossPhaseTimerRef.current = Date.now();
+      } else {
+        setBossIntroPhase('zoom_in');
+        bossPhaseTimerRef.current = Date.now();
+        if (onBossIntroChange) {
+          onBossIntroChange({ letterbox: true, showHp: false, hpFillPercent: 0, isIntroActive: true });
+        }
+      }
+    }
+  }, [bossEnemy, difficulty, onBossIntroChange]);
+
+  // Loop de Transições da Cinemática do Boss
+  useEffect(() => {
+    if (!bossIntroPhase || bossIntroPhase === 'completed') return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const elapsed = now - bossPhaseTimerRef.current;
+
+      if (bossIntroPhase === 'waiting_player') {
+        // Aguarda jogador pousar (2s após spawnTime)
+        const playerLanded = playerSpawnTime > 0 && (now - playerSpawnTime >= 2000);
+        if (playerLanded) {
+          setBossIntroPhase('zoom_in');
+          bossPhaseTimerRef.current = now;
+          if (onBossIntroChange) {
+            onBossIntroChange({ letterbox: true, showHp: false, hpFillPercent: 0, isIntroActive: true });
+          }
+        }
+      } else if (bossIntroPhase === 'zoom_in') {
+        // 0.5s de zoom e foco
+        if (elapsed >= 500) {
+          setBossIntroPhase('boss_descent');
+          bossPhaseTimerRef.current = now;
+          if (bossEnemy && triggerBossDescent) {
+            triggerBossDescent(bossEnemy.id, now);
+          }
+        }
+      } else if (bossIntroPhase === 'boss_descent') {
+        // 2s de descida do Boss
+        if (elapsed >= 2000) {
+          setBossIntroPhase('mario_growth');
+          bossPhaseTimerRef.current = now;
+        }
+      } else if (bossIntroPhase === 'mario_growth') {
+        // 0.7s de crescimento piscando pequeno/grande estilo Super Mario World
+        if (elapsed < 700) {
+          const blink = Math.floor(elapsed / 70) % 2 === 0;
+          setBossScale(blink ? 2.0 : 1.0);
+        } else {
+          setBossScale(2.0);
+          setBossFootprint([2, 2]);
+          setBossIntroPhase('zoom_out');
+          bossPhaseTimerRef.current = now;
+          if (onBossIntroChange) {
+            onBossIntroChange({ letterbox: false, showHp: false, hpFillPercent: 0, isIntroActive: true });
+          }
+        }
+      } else if (bossIntroPhase === 'zoom_out') {
+        // 0.5s retirando zoom
+        if (elapsed >= 500) {
+          setBossIntroPhase('hp_fill');
+          bossPhaseTimerRef.current = now;
+          if (onBossIntroChange) {
+            onBossIntroChange({ letterbox: false, showHp: true, hpFillPercent: 0, isIntroActive: true });
+          }
+        }
+      } else if (bossIntroPhase === 'hp_fill') {
+        // Preenchimento de HP animado (800ms)
+        const p = Math.min((elapsed / 800) * 100, 100);
+        if (onBossIntroChange) {
+          onBossIntroChange({ letterbox: false, showHp: true, hpFillPercent: p, isIntroActive: true });
+        }
+        if (elapsed >= 800) {
+          setBossIntroPhase('completed');
+          if (onBossIntroChange) {
+            onBossIntroChange({ letterbox: false, showHp: true, hpFillPercent: undefined, isIntroActive: false });
+          }
+          if (bossEnemy && completeBossIntro) {
+            completeBossIntro(bossEnemy.id);
+          }
+        }
+      }
+    }, 40);
+
+    return () => clearInterval(interval);
+  }, [bossIntroPhase, playerSpawnTime, bossEnemy, triggerBossDescent, completeBossIntro, onBossIntroChange]);
+
+  const bossPos3D = useMemo(() => {
+    if (!bossEnemy) return null;
+    const centerCol = bossEnemy.position[1] + (bossFootprint[0] - 1) / 2;
+    const centerRow = bossEnemy.position[0] + (bossFootprint[1] - 1) / 2;
+    return gridToPosition3D(centerCol, centerRow, arenaSize);
+  }, [bossEnemy, bossFootprint, arenaSize]);
 
   // ── Hit Effects & Wave Impacts (Floor interaction) ──
   const [hitEffects, setHitEffects] = useState([]);
@@ -123,12 +356,10 @@ export default function Arena3D({
   const wasCounting = useRef(false);
   useEffect(() => {
     if (bombCountdown > 0) wasCounting.current = true;
-    if (bombCountdown === 0 && wasCounting.current) {
+    if (wasCounting.current && bombCountdown === 0) {
       wasCounting.current = false;
       if (gameState.bomba) {
-        const now = Date.now();
-        setHitEffects(prev => [...prev, { col: gameState.bomba.col, row: gameState.bomba.row, time: now }]);
-        setWaveHits(prev => [...prev, { col: gameState.bomba.col, row: gameState.bomba.row, time: now }]);
+        setWaveHits(prev => [...prev, { col: gameState.bomba.col, row: gameState.bomba.row, time: Date.now() }]);
       }
     }
   }, [bombCountdown, gameState.bomba]);
@@ -149,13 +380,41 @@ export default function Arena3D({
     return () => clearInterval(interval);
   }, [incomingBombs]);
 
+  // Efeito de Impacto e Tremor de Tela no Pouso do Boss
+  const [screenShake, setScreenShake] = useState(0);
+  const bossLandedRef = useRef(new Set());
+
+  useEffect(() => {
+    enemiesInRoom.forEach(e => {
+      if (e.type === 'boss' && e.landingState && !bossLandedRef.current.has(e.landingState.startTime)) {
+        bossLandedRef.current.add(e.landingState.startTime);
+        const [row, col] = e.position;
+        const now = Date.now();
+        setWaveHits(prev => [
+          ...prev,
+          { col: col, row: row, time: now },
+          { col: col + 1, row: row, time: now },
+          { col: col, row: row + 1, time: now },
+          { col: col + 1, row: row + 1, time: now }
+        ]);
+        setHitEffects(prev => [
+          ...prev,
+          { col: col, row: row, time: now },
+          { col: col + 1, row: row, time: now },
+          { col: col, row: row + 1, time: now },
+          { col: col + 1, row: row + 1, time: now }
+        ]);
+        setScreenShake(now);
+      }
+    });
+  }, [enemiesInRoom]);
+
   // ── Throw start position ──
   const throwerPosRef = useRef(playerPos3D);
   useEffect(() => {
-    if (bombThrowTrigger > 0) throwerPosRef.current = playerPos3D;
-  }, [bombThrowTrigger]);
+    if (bombThrowTrigger > 0) throwerPosRef.current = [...playerPos3D];
+  }, [bombThrowTrigger, playerPos3D]);
 
-  // Identifica mira ativa da Sniper e Bomba (ao vivo na prévia e durante o ataque)
   const activeSniperTarget = previewState?.sniper?.col
     ? previewState.sniper
     : (sniperShootTrigger > 0 ? gameState.sniper : null);
@@ -164,17 +423,23 @@ export default function Arena3D({
     ? previewState.bomba
     : (bombCountdown > 0 ? gameState.bomba : null);
 
+  const now = Date.now();
+  const isPlayerDescending = playerSpawnTime > 0 && (now - playerSpawnTime < 1500);
+
   const occupiedTiles = [
-    { col: gameState.player.col, row: gameState.player.row, type: 'player' }
+    { col: gameState.player.col, row: gameState.player.row, type: isPlayerDescending ? 'descending' : 'player' }
   ];
+
   enemiesInRoom.forEach(e => {
-    // Para chefes, ocupa todos os blocos baseados no size
-    for (let c = 0; c < e.size[0]; c++) {
-      for (let r = 0; r < e.size[1]; r++) {
+    const isBoss = e.type === 'boss';
+    const isEnemyDescending = e.spawnTime > 0 && (now - e.spawnTime < 2500);
+    const currentFootprint = isBoss ? bossFootprint : e.size;
+
+    for (let c = 0; c < currentFootprint[0]; c++) {
+      for (let r = 0; r < currentFootprint[1]; r++) {
         const tileCol = e.position[1] + c;
         const tileRow = e.position[0] + r;
 
-        // Checa se o inimigo está na mira da sniper ou no alcance da bomba
         const isSniperHit = activeSniperTarget &&
           activeSniperTarget.col === tileCol &&
           activeSniperTarget.row === tileRow;
@@ -183,7 +448,10 @@ export default function Arena3D({
           Math.abs(tileCol - activeBombTarget.col) <= 1 &&
           Math.abs(tileRow - activeBombTarget.row) <= 1;
 
-        const tileType = (isSniperHit || isBombHit) ? 'npc-targeted' : 'npc';
+        let tileType = (isSniperHit || isBombHit) ? 'npc-targeted' : 'npc';
+        if (isEnemyDescending || (isBoss && (bossIntroPhase === 'waiting_player' || bossIntroPhase === 'zoom_in' || bossIntroPhase === 'boss_descent' || e.spawnTime === 0))) {
+          tileType = 'descending';
+        }
 
         occupiedTiles.push({ col: tileCol, row: tileRow, type: tileType });
       }
@@ -208,13 +476,18 @@ export default function Arena3D({
   else if (activeTool === 'sniper' && previewSniperPos3D) playerLookAt = previewSniperPos3D;
   else if (activeTool) playerLookAt = 'weapon';
 
+  const handlePlayerLanded = () => {};
+  const handleEnemyLanded = () => {};
+
   return (
     <Canvas
-      gl={{ antialias: false, stencil: false, depth: true }}
+      gl={{ antialias: true, powerPreference: 'high-performance', alpha: false, stencil: false, depth: true }}
+      dpr={[1, 2]}
       onCreated={({ gl }) => gl.setClearColor('#000000')}
-   >
-      <OrthographicCamera makeDefault position={[10, 10, 10]} zoom={40} />
-      <OrbitControls />
+    >
+      <OrthographicCamera makeDefault position={[0, 14, 14]} zoom={40} />
+      <CinematicCameraController introPhase={bossIntroPhase} bossPos3D={bossPos3D} defaultZoom={40} />
+      <CameraRig screenShakeTime={screenShake} />
 
       <LightBootSequence />
 
@@ -229,14 +502,40 @@ export default function Arena3D({
           shootTrigger={sniperShootTrigger}
           lookAtTarget={playerLookAt}
           damageTrigger={playerDamageTrigger}
+          spawnTime={playerSpawnTime}
+          onLanded={handlePlayerLanded}
+          isAwaitingSpawn={playerSpawnTime === 0}
         />
       </group>
 
       <group>
         {enemiesInRoom.map(enemy => (
-          <VoxelEnemy key={enemy.id} enemy={enemy} arenaSize={arenaSize} />
+          <VoxelEnemy
+            key={enemy.id}
+            enemy={enemy}
+            arenaSize={arenaSize}
+            onLanded={() => handleEnemyLanded(enemy)}
+            isAwaitingSpawn={enemy.type === 'boss' ? (bossIntroPhase === 'waiting_player' || bossIntroPhase === 'zoom_in' || (!bossIntroPhase && enemy.spawnTime === 0)) : (enemy.spawnTime === 0)}
+            scaleOverride={enemy.type === 'boss' ? bossScale : null}
+          />
         ))}
       </group>
+
+      {/* Alvo e Área de Onda de Choque do Pulo do Boss (5 segundos visível) */}
+      {enemiesInRoom.map(enemy => {
+        if (enemy.type === 'boss' && enemy.jumpState) {
+          const [tRow, tCol] = enemy.jumpState.targetPos;
+          const centerCol = tCol + (enemy.size[0] - 1) / 2;
+          const centerRow = tRow + (enemy.size[1] - 1) / 2;
+          return (
+            <React.Fragment key={`boss-jump-target-${enemy.id}`}>
+              <BombArea centerCol={centerCol} centerRow={centerRow} arenaSize={arenaSize} color="#ff0040" />
+              <BossWaveImpactArea centerCol={centerCol} centerRow={centerRow} arenaSize={arenaSize} />
+            </React.Fragment>
+          );
+        }
+        return null;
+      })}
 
       {/* Bomba Area do Jogador (apenas durante o countdown ou na prévia com ferramenta ativa) */}
       {bombCountdown > 0 && gameState.bomba && (
@@ -257,12 +556,12 @@ export default function Arena3D({
       )}
 
       {/* Bomba voadora do Jogador (apenas durante o countdown) */}
-      {bombCountdown > 0 && bombThrowTrigger > 0 && bombaPos3D && (
+      {bombCountdown > 0 && bombThrowTrigger > 0 && bombaPos3D && throwerPosRef.current && (
         <Bomb
-          startPos={throwerPosRef.current}
+          startPos={[throwerPosRef.current[0] + 0.28, 0.8, throwerPosRef.current[2]]}
           endPos={bombaPos3D}
-          startTime={bombThrowTrigger}
-          duration={5000}
+          startTime={bombThrowTrigger + 200}
+          duration={4800}
           shooterType="player"
         />
       )}
@@ -273,7 +572,9 @@ export default function Arena3D({
         let startPos = [targetPos[0], 10, targetPos[2]];
         if (b.shooterType === 'normal' && b.shooterPos) {
           startPos = gridToPosition3D(b.shooterPos[0], b.shooterPos[1], arenaSize);
-          startPos[1] = 0.8; // Altura da mão
+          const handOffset = b.hand === 'left' ? -0.28 : 0.28;
+          startPos[0] += handOffset;
+          startPos[1] = 0.8;
         }
 
         return (

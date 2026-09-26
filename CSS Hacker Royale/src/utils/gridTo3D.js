@@ -1,6 +1,6 @@
 // ============================================================
 //  gridTo3D.js — Mapeamento de Coordenadas 2D Grid → 3D Voxel
-//  Turma 3DM SENAI Suíço-Brasileira
+//  Projeto de aprendizado
 //
 //  COMO FUNCIONA O MAPEAMENTO:
 //
@@ -58,12 +58,10 @@ export const BLOCK_SIZE = CELL_SIZE - CELL_GAP;
  * gridTo3D(3, 4, 0.5) // → [0.6, 0.5, -0.6]
  */
 export function gridTo3D(row, col, y = 0) {
-  //  col → eixo X    row → eixo Z (invertido para câmera top-down)
-  //  Centraliza subtraindo metade do tamanho do grid
   const halfGrid = (ARENA_SIZE - 1) / 2; // 2.5 para grid 6x6
 
-  const x = (col - 1 - halfGrid) * CELL_SIZE;
-  const z = (row - 1 - halfGrid) * CELL_SIZE;
+  const x = (row - 1 - halfGrid) * CELL_SIZE;
+  const z = (col - 1 - halfGrid) * CELL_SIZE;
 
   return [x, y, z];
 }

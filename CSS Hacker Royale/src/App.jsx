@@ -3,11 +3,12 @@
 //  Editor de código CSS + Arena 3D + Cheatsheet
 // ============================================================
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import Arena3D from './components/Arena3D';
 import { useGameState } from './hooks/useGameState';
 import { parsePlayerCode, getActiveEditorClass } from './utils/GameEngine';
 import MainMenu from './components/MainMenu';
+import DemoArena from './components/DemoArena';
 import './App.css';
 
 const EMPTY_CSS = `.player {
@@ -25,7 +26,7 @@ const EMPTY_CSS = `.player {
 // ── Componente Principal ────────────────────────────────────
 export default function App() {
   const [cssCode, setCssCode] = useState(EMPTY_CSS);
-  const [committedCssCode, setCommittedCssCode] = useState(EMPTY_CSS); // Usado apenas para executar ações
+  const [committedCssCode, setCommittedCssCode] = useState(EMPTY_CSS);
 
   const [bombCountdown, setBombCountdown] = useState(0);
   const [activeTool, setActiveTool] = useState(null);
@@ -38,8 +39,41 @@ export default function App() {
 
   // States for the Cheatsheet and Alerts
   const [cheatsheetHovered, setCheatsheetHovered] = useState(false);
-  const [clickedTile, setClickedTile] = useState(null); // {col, row}
+  const [clickedTile, setClickedTile] = useState(null);
   const [gameAlert, setGameAlert] = useState(null);
+
+  // Demonstrações ativas e timing de spawn
+  const [activeDemo, setActiveDemo] = useState(null);
+  const [playerSpawnTime, setPlayerSpawnTime] = useState(0);
+  const [bossIntroState, setBossIntroState] = useState({
+    letterbox: false,
+    showHp: false,
+    hpFillPercent: undefined,
+    isIntroActive: false
+  });
+
+  // ── Sistema de Transição com Fade de 2s para Preto ──────────
+  const [fadeState, setFadeState] = useState({
+    active: false,
+    opacity: 0,
+  });
+
+  const triggerFadeTransition = useCallback((onMidpoint, onComplete) => {
+    setFadeState({ active: true, opacity: 0 });
+    requestAnimationFrame(() => {
+      setFadeState({ active: true, opacity: 1 });
+    });
+
+    setTimeout(() => {
+      if (onMidpoint) onMidpoint();
+      setFadeState({ active: true, opacity: 0 });
+
+      setTimeout(() => {
+        setFadeState({ active: false, opacity: 0 });
+        if (onComplete) onComplete();
+      }, 2000);
+    }, 2000);
+  }, []);
 
   useEffect(() => {
     if (gameAlert) {
@@ -49,6 +83,42 @@ export default function App() {
   }, [gameAlert]);
 
   const gameState = useGameState();
+
+  useEffect(() => {
+    window.__triggerBossJump = () => {
+      gameState.triggerBossJump();
+    };
+    window.__gameState = gameState;
+    return () => {
+      delete window.__triggerBossJump;
+      delete window.__gameState;
+    };
+  }, [gameState]);
+
+  const handleStartGame = (difficulty, gridSize) => {
+    triggerFadeTransition(
+      () => {
+        gameState.startGame(difficulty, gridSize);
+      },
+      () => {
+        const now = Date.now();
+        setPlayerSpawnTime(now);
+        gameState.resetSpawnTimes(now);
+      }
+    );
+  };
+
+  const handleOpenDemo = (demoType) => {
+    triggerFadeTransition(() => {
+      setActiveDemo(demoType);
+    });
+  };
+
+  const handleCloseDemo = () => {
+    triggerFadeTransition(() => {
+      setActiveDemo(null);
+    });
+  };
 
   // ── Ação Global: Rodar Código ──────────────────────────────
   const handleExecuteAll = () => {
@@ -82,76 +152,50 @@ export default function App() {
       }
 
       if (collision) {
-        setGameAlert("⛔ ESPAÇO OCUPADO! Movimento cancelado.");
+        gameState.applyPlayerDamage(1);
+        setGameAlert("💥 COLISÃO COM INIMIGO! -1 Vida");
         targetCol = gameState.lastPlayerPos.current.col;
         targetRow = gameState.lastPlayerPos.current.row;
       }
+
+      gameState.lastPlayerPos.current = { col: targetCol, row: targetRow };
+      gameState.setLastParsedPos({ col: targetCol, row: targetRow });
     }
 
-    // Monta o CSS efetivo que será aplicado
-    let finalCssCode = cssCode;
-    if (targetCol !== undefined && targetRow !== undefined) {
-      finalCssCode = `.player {\n  grid-column: ${targetCol};\n  grid-row: ${targetRow};\n}\n` +
-        (parsedCurrent.bomba ? `.bomba {\n  grid-column: ${parsedCurrent.bomba.col};\n  grid-row: ${parsedCurrent.bomba.row};\n}\n` : '') +
-        (parsedCurrent.sniper ? `.sniper {\n  grid-column: ${parsedCurrent.sniper.col};\n  grid-row: ${parsedCurrent.sniper.row};\n}\n` : '');
-    }
-
-    const playerMoved =
-      targetCol !== parsedCommitted.player?.col ||
-      targetRow !== parsedCommitted.player?.row;
-
-    // Aplica o movimento imediatamente visualmente no 3D
-    setCommittedCssCode(finalCssCode);
-
-    let delay = 0;
-    if (playerMoved) {
-      delay = 800; // Tempo de animação de teleporte
-    }
-
-    // Após o teleporte, processa os ataques se existirem no CSS atual
-    setTimeout(() => {
-      if (parsedCurrent.bomba?.col && parsedCurrent.bomba?.row && bombCountdown === 0) {
+    // 3. Disparo de Armas
+    if (parsedCurrent.bomba?.col && parsedCurrent.bomba?.row) {
+      if (!parsedCommitted.bomba || parsedCurrent.bomba.col !== parsedCommitted.bomba.col || parsedCurrent.bomba.row !== parsedCommitted.bomba.row) {
         setBombCountdown(5);
         setBombThrowTrigger(Date.now());
       }
+    }
 
-      if (parsedCurrent.sniper?.col && parsedCurrent.sniper?.row) {
-        gameState.fireSniper(parsedCurrent.sniper.col, parsedCurrent.sniper.row);
+    if (parsedCurrent.sniper?.col && parsedCurrent.sniper?.row) {
+      if (!parsedCommitted.sniper || parsedCurrent.sniper.col !== parsedCommitted.sniper.col || parsedCurrent.sniper.row !== parsedCommitted.sniper.row) {
         setSniperShootTrigger(Date.now());
+        gameState.fireSniper(parsedCurrent.sniper.col, parsedCurrent.sniper.row);
       }
+    }
 
-      // Apaga o código após a execução (se a opção estiver ativa)
-      if (shouldClearCode) {
-        setCssCode(EMPTY_CSS);
-      }
-    }, delay);
+    setCommittedCssCode(cssCode);
+    if (shouldClearCode) {
+      setCssCode(EMPTY_CSS);
+      setActiveTool(null);
+    }
   };
 
-  // ── Atalhos Globais ───────────────────────────────────────
+  // Keyboard shortcut Ctrl+Enter
   useEffect(() => {
-    if (gameState.phase === 'menu') return;
-
     const handleKeyDown = (e) => {
-      // Ctrl + Enter: Rodar Código
-      if (e.ctrlKey && e.key === 'Enter') {
-        e.preventDefault();
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         handleExecuteAll();
-        return;
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [gameState.phase, cssCode, committedCssCode, bombCountdown]);
+  });
 
-  // ── 20s Bot Timer ─────────────────────────────────────────
-  useEffect(() => {
-    if (gameState.phase === 'menu') return;
-    const id = setInterval(() => gameState.processBotTurns(), 20000);
-    return () => clearInterval(id);
-  }, [gameState.phase, gameState.processBotTurns]);
-
-  // ── Bomba Countdown ───────────────────────────────────────
+  // Bomba Countdown
   const isCountingRef = useRef(false);
   useEffect(() => {
     if (bombCountdown > 0) {
@@ -167,35 +211,112 @@ export default function App() {
     }
   }, [bombCountdown, committedCssCode, gameState.fireBomb]);
 
-  // ── Interação com Editor ──────────────────────────────────
   const handleEditorInteraction = (e) => {
     const idx = e.target.selectionStart;
     const active = getActiveEditorClass(cssCode, idx);
     setActiveTool(active);
   };
 
-  // Resolve Tool do Robô
   const currentRobotTool = cheatsheetHovered ? 'papel' : activeTool;
 
   // ── Render ────────────────────────────────────────────────
-  if (gameState.phase === 'menu') {
+  if (activeDemo) {
     return (
-      <MainMenu
-        onStart={gameState.startGame}
-        shouldClearCode={shouldClearCode}
-        setShouldClearCode={setShouldClearCode}
-      />
+      <>
+        <DemoArena
+          type={activeDemo}
+          onClose={handleCloseDemo}
+          onSwitch={setActiveDemo}
+        />
+        {fadeState.active && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: '#000000',
+              zIndex: 999999,
+              pointerEvents: 'all',
+              opacity: fadeState.opacity,
+              transition: 'opacity 2000ms ease-in-out',
+            }}
+          />
+        )}
+      </>
     );
   }
 
-  // Resolve Boss Info
+  if (gameState.phase === 'menu') {
+    return (
+      <>
+        <MainMenu
+          onStart={handleStartGame}
+          onOpenDemo={handleOpenDemo}
+          shouldClearCode={shouldClearCode}
+          setShouldClearCode={setShouldClearCode}
+        />
+        {fadeState.active && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: '#000000',
+              zIndex: 999999,
+              pointerEvents: 'all',
+              opacity: fadeState.opacity,
+              transition: 'opacity 2000ms ease-in-out',
+            }}
+          />
+        )}
+      </>
+    );
+  }
+
   const activeBoss = Object.values(gameState.enemies).find(e => e.hp > 0 && e.type === 'boss');
 
   return (
     <div className="app-root">
 
-      {/* HUD Superior (Vidas) */}
-      <div style={{ position: 'absolute', top: '20px', left: '20px', zIndex: 100, display: 'flex', gap: '20px', color: '#00ddaa', fontFamily: 'monospace', fontSize: '18px', background: 'rgba(0,0,0,0.7)', padding: '10px 20px', borderRadius: '4px', alignItems: 'center' }}>
+      {/* Overlay de Transição (Fade In / Fade Out de 2s) */}
+      {fadeState.active && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: '#000000',
+            zIndex: 999999,
+            pointerEvents: 'all',
+            opacity: fadeState.opacity,
+            transition: 'opacity 2000ms ease-in-out',
+          }}
+        />
+      )}
+
+      {/* Letterbox Cinematográfico do Boss */}
+      {bossIntroState.letterbox && (
+        <>
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '11vh', background: '#000000', zIndex: 90000, pointerEvents: 'none' }} />
+          <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: '11vh', background: '#000000', zIndex: 90000, pointerEvents: 'none' }} />
+        </>
+      )}
+
+      {/* HUD Superior (Vidas / Inimigos / Fase) no Canto Superior Direito com leve borda branca */}
+      <div style={{
+        position: 'absolute',
+        top: '20px',
+        right: '20px',
+        zIndex: 100,
+        display: 'flex',
+        gap: '20px',
+        color: '#00ddaa',
+        fontFamily: 'monospace',
+        fontSize: '18px',
+        background: 'rgba(0,0,0,0.78)',
+        border: '1px solid rgba(255, 255, 255, 0.45)',
+        boxShadow: '0 0 12px rgba(255, 255, 255, 0.15)',
+        padding: '10px 20px',
+        borderRadius: '4px',
+        alignItems: 'center'
+      }}>
         <div>♥ HP JOGADOR: {gameState.playerHp}/3</div>
         <div>💀 INIMIGOS VIVOS: {Object.values(gameState.enemies).filter(e => e.hp > 0).length}</div>
         <div style={{ color: '#fff', fontSize: '14px', marginLeft: '10px' }}>[Fase {gameState.currentLevel} - {gameState.difficulty}]</div>
@@ -204,7 +325,7 @@ export default function App() {
       {/* Alerta de Jogo (Clamp / Colisão) */}
       {gameAlert && (
         <div style={{
-          position: 'absolute', top: '75px', left: '20px', zIndex: 110,
+          position: 'absolute', top: '75px', right: '20px', zIndex: 110,
           background: 'rgba(255, 30, 30, 0.85)', color: '#ffffff',
           fontFamily: 'monospace', fontWeight: 'bold', fontSize: '16px',
           padding: '8px 16px', borderRadius: '4px', border: '1px solid #ff5555',
@@ -216,34 +337,36 @@ export default function App() {
       )}
 
       {/* HUD Boss */}
-      {activeBoss && (
+      {activeBoss && (bossIntroState.showHp || !bossIntroState.isIntroActive) && (
         <div style={{
           position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
-          width: '50%', zIndex: 100, background: 'rgba(0,0,0,0.8)', padding: '10px',
+          width: '50%', zIndex: 100, background: 'rgba(0,0,0,0.85)', padding: '12px 16px',
           border: '2px solid #BC0001', borderRadius: '4px',
-          animation: 'shake 0.5s infinite alternate'
+          boxShadow: '0 0 20px rgba(188, 0, 1, 0.4)'
         }}>
-          <div style={{ color: '#BC0001', textAlign: 'center', fontWeight: 'bold', fontSize: '20px', marginBottom: '5px' }}>
+          <div style={{ color: '#ff2233', textAlign: 'center', fontWeight: 'bold', fontSize: '18px', marginBottom: '8px', letterSpacing: '2px', textTransform: 'uppercase' }}>
             {activeBoss.name}
           </div>
-          <div style={{ width: '100%', height: '20px', background: '#333' }}>
+          <div style={{ width: '100%', height: '18px', background: '#1a1a1a', borderRadius: '2px', overflow: 'hidden', border: '1px solid #440000' }}>
             <div style={{
-              width: `${(activeBoss.hp / activeBoss.maxHp) * 100}%`,
-              height: '100%', background: '#BC0001', transition: 'width 0.2s'
+              width: bossIntroState.hpFillPercent !== undefined
+                ? `${bossIntroState.hpFillPercent}%`
+                : `${(activeBoss.hp / activeBoss.maxHp) * 100}%`,
+              height: '100%', background: 'linear-gradient(90deg, #880000, #ff0033)', transition: 'width 0.25s'
             }} />
           </div>
         </div>
       )}
 
       {gameState.phase === 'gameover' && (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(50,0,0,0.8)', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ff2222' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(50,0,0,0.85)', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ff2222' }}>
           <h1>GAME OVER</h1>
           <button className="action-btn" onClick={() => window.location.reload()} style={{ marginTop: '20px' }}>REINICIAR SISTEMA</button>
         </div>
       )}
 
       {gameState.phase === 'victory' && (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,50,20,0.8)', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#00ffcc' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,50,20,0.85)', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#00ffcc' }}>
           <h1>SISTEMA HACKEADO COM SUCESSO!</h1>
           <p>Você concluiu a dificuldade {gameState.difficulty}</p>
           <button className="action-btn" onClick={() => window.location.reload()} style={{ marginTop: '20px' }}>VOLTAR AO MENU</button>
@@ -270,24 +393,6 @@ export default function App() {
           <button className="action-btn execute-btn" onClick={handleExecuteAll}>
             ▶ RODAR CÓDIGO (Ctrl+Enter)
           </button>
-
-          <button className="action-btn teleport-btn" onClick={handleExecuteAll}>
-            🏃‍♂️ TELEPORTAR
-          </button>
-
-          <button
-            className="action-btn bomb-btn"
-            onClick={handleExecuteAll}
-            disabled={bombCountdown > 0}
-          >
-            {bombCountdown > 0
-              ? `💣 DETONANDO: ${bombCountdown}s`
-              : '💣 DEPLOY BOMBA'}
-          </button>
-
-          <button className="action-btn sniper-btn" onClick={handleExecuteAll}>
-            🎯 DISPARAR SNIPER
-          </button>
         </div>
       </div>
 
@@ -308,6 +413,11 @@ export default function App() {
           arenaSize={gameState.arenaSize}
           onTileClick={(col, row) => setClickedTile({ col, row })}
           incomingBombs={gameState.incomingBombs}
+          playerSpawnTime={playerSpawnTime}
+          difficulty={gameState.difficulty}
+          onBossIntroChange={setBossIntroState}
+          triggerBossDescent={gameState.triggerBossDescent}
+          completeBossIntro={gameState.completeBossIntro}
         />
       </div>
 

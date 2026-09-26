@@ -11,7 +11,7 @@ import * as THREE from 'three';
 const BASE_SCALE = 0.055;
 const TELEPORT_SPEED = 4;
 
-function RecursiveModel({ node, modelType, partsMap }) {
+function RecursiveModel({ node, modelType, partsMap, outlineColor }) {
   const setRef = (el) => {
     if (el && node.userData.part) {
       partsMap[node.userData.part] = el;
@@ -22,14 +22,69 @@ function RecursiveModel({ node, modelType, partsMap }) {
   if (node.isMesh) {
     return (
       <mesh ref={setRef} geometry={node.geometry} material={node.material} position={node.position} rotation={node.rotation} scale={node.scale} castShadow>
-        <Outlines thickness={2} color={modelType === 'player' ? '#185A74' : '#BC0001'} />
-        {node.children.map(child => <RecursiveModel key={child.uuid} node={child} modelType={modelType} partsMap={partsMap} />)}
+        <Outlines thickness={2} color={outlineColor || (modelType === 'player' ? '#185A74' : '#BC0001')} />
+        {node.children.map(child => <RecursiveModel key={child.uuid} node={child} modelType={modelType} partsMap={partsMap} outlineColor={outlineColor} />)}
       </mesh>
     );
   }
   return (
     <group ref={setRef} position={node.position} rotation={node.rotation} scale={node.scale}>
-      {node.children.map(child => <RecursiveModel key={child.uuid} node={child} modelType={modelType} partsMap={partsMap} />)}
+      {node.children.map(child => <RecursiveModel key={child.uuid} node={child} modelType={modelType} partsMap={partsMap} outlineColor={outlineColor} />)}
+    </group>
+  );
+}
+
+// ── Mini-bombas do Boss disparadas para o céu ─────────────
+function BossSkyBombs({ skyBombAttack, scaleMultiplier }) {
+  const groupRef = useRef();
+  const meshesRef = useRef([]);
+
+  useFrame(() => {
+    if (!skyBombAttack || !groupRef.current) return;
+    const elapsed = (Date.now() - skyBombAttack.startTime) / 1000;
+    const count = skyBombAttack.bombsCount || 5;
+
+    for (let i = 0; i < count; i++) {
+      const mesh = meshesRef.current[i];
+      if (!mesh) continue;
+      const tPeak = i * 0.2 + 0.2;
+      const bElapsed = elapsed - tPeak;
+
+      if (bElapsed >= 0 && bElapsed <= 0.5) {
+        mesh.visible = true;
+        const u = bElapsed / 0.5; // 0 to 1
+        const isRight = (i % 2 === 0);
+        const handX = (isRight ? 0.38 : -0.38) * scaleMultiplier;
+        const handZ = 0.35 * scaleMultiplier;
+        const startY = 1.2 * scaleMultiplier;
+        // Sobe da mão em direção ao céu ao longo de 0.5s
+        mesh.position.set(handX, startY + u * 6.5, handZ);
+      } else {
+        mesh.visible = false;
+      }
+    }
+  });
+
+  if (!skyBombAttack) return null;
+  const count = skyBombAttack.bombsCount || 5;
+
+  return (
+    <group ref={groupRef}>
+      {Array.from({ length: count }).map((_, i) => (
+        <mesh
+          key={i}
+          ref={el => { meshesRef.current[i] = el; }}
+          visible={false}
+        >
+          <boxGeometry args={[0.38, 0.38, 0.38]} />
+          <meshStandardMaterial
+            color="#ff0040"
+            emissive="#ff0040"
+            emissiveIntensity={1.8}
+            roughness={0.2}
+          />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -40,16 +95,31 @@ export default function RobotModel({
   activeTool = null,
   isTerminalOpen = false,
   meshRef,
-  modelType = 'player', // 'player' | 'npc'
+  modelType = 'player', // 'player' | 'npc' | 'boss'
   throwTrigger = 0,
   shootTrigger = 0,
   scaleMultiplier = 1,
   isChargingBomb = false,
   lookAtTarget = null,
   damageTrigger = 0,
+  spawnTime = 0,
+  onLanded = null,
+  isAwaitingSpawn = false,
+  jumpState = null,
+  jumpStartPos3D = null,
+  jumpTargetPos3D = null,
+  landingState = null,
+  skyBombAttack = null,
+  bombAttack = null,
 }) {
   const groupRef = useRef();
   const internalModelRef = useRef();
+
+  const defaultOutline = modelType === 'player' ? '#185A74' : '#BC0001';
+  const [currentOutlineColor, setCurrentOutlineColor] = useState(defaultOutline);
+  const landedTriggered = useRef(false);
+  const landingStartTime = useRef(0);
+  const whiteColorRef = useMemo(() => new THREE.Color('#ffffff'), []);
 
   const modelPath = modelType === 'player' ? '/models/RoboAzulModel.glb' : '/models/RoboNPCModel.glb';
   const { scene } = useGLTF(modelPath);
@@ -120,16 +190,42 @@ export default function RobotModel({
     nextLookDelay.current = Math.random() * 16 + 4;
   }, []);
 
+  const wasJumpingOrLanding = useRef(false);
+
+  useEffect(() => {
+    if (jumpState || landingState) {
+      wasJumpingOrLanding.current = true;
+    }
+  }, [jumpState, landingState]);
+
   useEffect(() => {
     const key = position.join(',');
     if (key !== prevPos.current && groupRef.current) {
       prevPos.current = key;
-      setTargetPos(new THREE.Vector3(...position));
-      setAnimState('out');
-      animTime.current = 0;
+      const newPos = new THREE.Vector3(...position);
+      setTargetPos(newPos);
+      
+      const isBossOrJump = modelType === 'boss' || jumpState || landingState || wasJumpingOrLanding.current;
+      if (!isBossOrJump) {
+        setAnimState('out');
+        animTime.current = 0;
+      } else {
+        groupRef.current.position.copy(newPos);
+        setAnimState('idle');
+      }
+
+      if (!jumpState && !landingState) {
+        wasJumpingOrLanding.current = false;
+      }
       resetLookTimer();
     }
-  }, [position[0], position[1], position[2], resetLookTimer]);
+  }, [position[0], position[1], position[2], jumpState, landingState, modelType, resetLookTimer]);
+
+  useEffect(() => {
+    if (landingState || skyBombAttack || bombAttack) {
+      resetLookTimer();
+    }
+  }, [landingState, skyBombAttack, bombAttack, resetLookTimer]);
 
   // ── Triggers de Ação (Throw & Shoot) ───────────────────────
   const actionTime = useRef(0);
@@ -185,10 +281,126 @@ export default function RobotModel({
   // ── Main Loop (useFrame) ───────────────────────────────────
   useFrame((state, delta) => {
     if (!groupRef.current || !internalModelRef.current) return;
+
+    // Esconder o personagem completamente até iniciar a descida (durante fade-out para a partida ou espera do Boss)
+    if (isAwaitingSpawn || (spawnTime > 0 && Date.now() < spawnTime)) {
+      groupRef.current.visible = false;
+      return;
+    }
+    groupRef.current.visible = true;
+
     const t = state.clock.elapsedTime;
 
-    // 1. Teleporte do Robô
-    if (animState === 'out') {
+    // 0. Animação de Entrada Celestial do Céu (Sky Drop)
+    const nowSec = performance.now() / 1000;
+    const spawnDuration = modelType === 'player' ? 2.0 : 3.0;
+    const spawnElapsed = spawnTime > 0 ? (Date.now() - spawnTime) / 1000 : 999;
+    const isSpawning = spawnTime > 0 && spawnElapsed < spawnDuration;
+
+    let skyYOffset = 0;
+    if (isSpawning) {
+      const p = Math.min(Math.max(spawnElapsed / spawnDuration, 0), 1);
+      const easeOut = 1 - Math.pow(1 - p, 3);
+      skyYOffset = 30 * (1 - easeOut);
+
+      const remainingSec = spawnDuration - spawnElapsed;
+      if (remainingSec > 0.5) {
+        // Personagens completamente brancos com outlines brancos durante a descida
+        Object.values(parts).forEach(mesh => {
+          if (mesh && mesh.material) {
+            if (mesh.material.color) mesh.material.color.set('#ffffff');
+            if (mesh.material.emissive) {
+              mesh.material.emissive.set('#ffffff');
+              mesh.material.emissiveIntensity = 0.8;
+            }
+          }
+        });
+        if (currentOutlineColor !== '#ffffff') setCurrentOutlineColor('#ffffff');
+      } else {
+        // Aos 0.5s restantes para pousar: transiciona suavemente de volta às cores originais
+        const transProgress = (0.5 - remainingSec) / 0.5; // 0 to 1
+        Object.values(parts).forEach(mesh => {
+          if (mesh && mesh.material) {
+            if (mesh.userData.origColor && mesh.material.color) {
+              mesh.material.color.copy(whiteColorRef).lerp(mesh.userData.origColor, transProgress);
+            }
+            if (mesh.userData.origEmissive && mesh.material.emissive) {
+              mesh.material.emissive.copy(whiteColorRef).lerp(mesh.userData.origEmissive, transProgress);
+              mesh.material.emissiveIntensity = THREE.MathUtils.lerp(0.8, mesh.userData.origEmissiveIntensity || 0, transProgress);
+            }
+          }
+        });
+        if (currentOutlineColor !== defaultOutline) setCurrentOutlineColor(defaultOutline);
+      }
+    } else if (spawnTime > 0 && !landedTriggered.current) {
+      landedTriggered.current = true;
+      landingStartTime.current = nowSec;
+      if (currentOutlineColor !== defaultOutline) setCurrentOutlineColor(defaultOutline);
+      Object.values(parts).forEach(mesh => {
+        if (mesh && mesh.material) {
+          if (mesh.userData.origColor && mesh.material.color) mesh.material.color.copy(mesh.userData.origColor);
+          if (mesh.userData.origEmissive && mesh.material.emissive) {
+            mesh.material.emissive.copy(mesh.userData.origEmissive);
+            mesh.material.emissiveIntensity = mesh.userData.origEmissiveIntensity || 0;
+          }
+        }
+      });
+      if (onLanded) onLanded();
+    }
+
+    // Tremor e squash de impacto ao pousar (duração de 0.25s)
+    const landElapsed = nowSec - landingStartTime.current;
+    let landSquashY = 1;
+    let landSquashXZ = 1;
+    if (landElapsed < 0.25) {
+      const landP = landElapsed / 0.25;
+      const squash = Math.sin(landP * Math.PI) * 0.16;
+      landSquashY = 1 - squash;
+      landSquashXZ = 1 + squash * 0.5;
+    }
+
+    // 0.5. Lógica de Pulo Especial do Boss (5 segundos total)
+    const isJumping = !!(jumpState && jumpStartPos3D && jumpTargetPos3D && (Date.now() - jumpState.startTime < 5000));
+    const jumpElapsed = isJumping ? (Date.now() - jumpState.startTime) / 1000 : 999;
+    let effectiveLookAt = lookAtTarget;
+
+    // 1. Posicionamento, Teleporte ou Pulo do Robô
+    if (isJumping) {
+      const sm = BASE_SCALE * scaleMultiplier;
+      if (jumpElapsed < 2.0) {
+        // 1. Olha para o piso alvo por 2 segundos
+        effectiveLookAt = jumpTargetPos3D;
+        groupRef.current.position.set(jumpStartPos3D[0], jumpStartPos3D[1], jumpStartPos3D[2]);
+        internalModelRef.current.scale.set(sm, sm, sm);
+      } else if (jumpElapsed < 2.5) {
+        // 2. Fica amassado (squash) por 0.5 segundos antes de pular
+        effectiveLookAt = jumpTargetPos3D;
+        const squashP = (jumpElapsed - 2.0) / 0.5; // 0 to 1
+        const squashFactor = Math.sin(squashP * Math.PI * 0.5);
+        const squashY = THREE.MathUtils.lerp(1.0, 0.48, squashFactor);
+        const expandXZ = THREE.MathUtils.lerp(1.0, 1.28, squashFactor);
+        internalModelRef.current.scale.set(sm * expandXZ, sm * squashY, sm * expandXZ);
+        const feetYOffset = -(1.0 - squashY) * 0.35 * scaleMultiplier;
+        groupRef.current.position.set(jumpStartPos3D[0], jumpStartPos3D[1] + feetYOffset, jumpStartPos3D[2]);
+      } else {
+        // 3. Salto parabólico no ar por 2.5 segundos (sem girar, mantém postura ereta)
+        const jumpP = (jumpElapsed - 2.5) / 2.5; // 0 to 1
+        const currX = THREE.MathUtils.lerp(jumpStartPos3D[0], jumpTargetPos3D[0], jumpP);
+        const currZ = THREE.MathUtils.lerp(jumpStartPos3D[2], jumpTargetPos3D[2], jumpP);
+        const PEAK_HEIGHT = 6.2;
+        const arcY = Math.sin(jumpP * Math.PI) * PEAK_HEIGHT;
+        groupRef.current.position.set(currX, jumpStartPos3D[1] + arcY, currZ);
+        effectiveLookAt = null; // sem giro lateral
+        if (jumpP < 0.2) {
+          const unP = jumpP / 0.2;
+          const unSquashY = THREE.MathUtils.lerp(0.48, 1.0, unP);
+          const unExpandXZ = THREE.MathUtils.lerp(1.28, 1.0, unP);
+          internalModelRef.current.scale.set(sm * unExpandXZ, sm * unSquashY, sm * unExpandXZ);
+        } else {
+          internalModelRef.current.scale.set(sm, sm, sm);
+        }
+      }
+    } else if (animState === 'out') {
       animTime.current += delta * TELEPORT_SPEED;
       const pt = Math.min(animTime.current, 1);
       const sm = BASE_SCALE * scaleMultiplier;
@@ -219,10 +431,13 @@ export default function RobotModel({
           mesh.material.opacity = THREE.MathUtils.lerp(mesh.material.opacity, targetOpacity, 0.08);
         }
       });
+      // Posição com deslocamento de descida celestial
+      groupRef.current.position.set(targetPos.x, targetPos.y + skyYOffset, targetPos.z);
+      const sm = BASE_SCALE * scaleMultiplier;
+      internalModelRef.current.scale.set(sm * landSquashXZ, sm * landSquashY, sm * landSquashXZ);
     }
 
     // 2. Cálculo do Efeito de Dano (Recoil em metade do tempo + Piscar Vermelho/Branco por 2s)
-    const nowSec = performance.now() / 1000;
     const damageElapsed = nowSec - damageStartTime.current;
     const isDamagedActive = damageElapsed < 2.0;
 
@@ -261,22 +476,64 @@ export default function RobotModel({
       damageFlashing.current = false;
     }
 
-    // Carregamento de Ataque do Chefe (transição suave)
-    bossChargeLevel.current = THREE.MathUtils.lerp(
-      bossChargeLevel.current,
-      isChargingBomb ? 1 : 0,
-      delta * 2
-    );
-    const charge = bossChargeLevel.current;
-    // Quando o NPC boss for atacar, a cabeça faz rotation X para frente
-    const bossAttackRotX = charge * (Math.PI / 4);
+    // 0.4. Animação de Pouso Pós-Salto do Boss (1.5s - antiga animação da bomba reutilizada)
+    const isLanding = !!(landingState && (Date.now() - landingState.startTime < (landingState.duration || 1500)));
+    const landingElapsed = isLanding ? (Date.now() - landingState.startTime) / 1000 : 999;
+    const landingDuration = (landingState?.duration || 1500) / 1000;
+    
+    let landingCharge = 0;
+    if (isLanding) {
+      const lp = landingElapsed / landingDuration; // 0 to 1
+      if (lp < 0.75) {
+        landingCharge = Math.min(landingElapsed / 0.15, 1.0);
+      } else {
+        landingCharge = Math.max(0, 1.0 - (lp - 0.75) / 0.25);
+      }
+    }
+    const bossLandingRotX = landingCharge * (Math.PI / 4);
+
+    // 0.6. Nova Animação de Disparo de Bombas para o Céu do Boss
+    const isSkyBombing = !!(skyBombAttack && (Date.now() - skyBombAttack.startTime < (skyBombAttack.duration + 400)));
+    const skyBombElapsed = isSkyBombing ? (Date.now() - skyBombAttack.startTime) / 1000 : 999;
+    const skyDur = (skyBombAttack?.duration || 1500) / 1000;
+
+    let skyHeadRotX = 0;
+    if (isSkyBombing) {
+      if (skyBombElapsed < skyDur) {
+        // Cabeça olhando diretamente para o céu usando rotation X
+        skyHeadRotX = -Math.PI / 2.2;
+      } else {
+        // Retorna a cabeça suavemente para o lugar
+        const returnP = Math.min((skyBombElapsed - skyDur) / 0.25, 1);
+        skyHeadRotX = THREE.MathUtils.lerp(-Math.PI / 2.2, 0, returnP);
+      }
+    }
+
+    // 0.7. Nova Animação de Disparo Oblíquo de Bombas para Jogador e NPCs (Alternando Mãos)
+    const activeBomb = bombAttack || (throwTrigger > 0 && (Date.now() - throwTrigger < 1200) ? { startTime: throwTrigger, bombsCount: 1, duration: 700 } : null);
+    const isObliqueBombing = !!(activeBomb && (Date.now() - activeBomb.startTime < (activeBomb.duration || 700) + 200));
+    const obliqueBombElapsed = isObliqueBombing ? (Date.now() - activeBomb.startTime) / 1000 : 999;
+    const obliqueDur = ((activeBomb?.duration || 700)) / 1000;
+
+    let obliqueHeadRotX = 0;
+    if (isObliqueBombing) {
+      if (obliqueBombElapsed < obliqueDur) {
+        // Cabeça inclina para cima (como na animação do Boss) durante o lançamento
+        obliqueHeadRotX = -Math.PI / 3;
+      } else {
+        // Retorna a cabeça suavemente para o lugar
+        const returnP = Math.min((obliqueBombElapsed - obliqueDur) / 0.2, 1);
+        obliqueHeadRotX = THREE.MathUtils.lerp(-Math.PI / 3, 0, returnP);
+      }
+    }
 
     // 3. Animação Idle (Olhar ao redor aleatório de 4 a 20s no eixo Z) e Mira
     let targetHeadRotZ = 0;
     
-    if (lookAtTarget && Array.isArray(lookAtTarget)) {
-      const dx = lookAtTarget[0] - position[0];
-      const dz = lookAtTarget[2] - position[2];
+    if (effectiveLookAt && Array.isArray(effectiveLookAt)) {
+      const currentPos = groupRef.current.position;
+      const dx = effectiveLookAt[0] - currentPos.x;
+      const dz = effectiveLookAt[2] - currentPos.z;
       targetHeadRotZ = Math.atan2(dx, dz);
     } else {
       lookTimer.current += delta;
@@ -294,7 +551,7 @@ export default function RobotModel({
         }
       }
 
-      if (isLooking.current) {
+      if (isLooking.current && !isLanding && !isSkyBombing && !isObliqueBombing) {
         targetHeadRotZ = lookDirection.current * (Math.PI / 4);
       } else {
         targetHeadRotZ = 0;
@@ -310,8 +567,8 @@ export default function RobotModel({
        parts.head.rotation.z = THREE.MathUtils.lerp(parts.head.rotation.z, baseRotZ + targetHeadRotZ, delta * 15);
        // Rotação Y: Mantém neutro
        parts.head.rotation.y = THREE.MathUtils.lerp(parts.head.rotation.y, baseRotY, delta * 15);
-       // Rotação X: Inclina para frente no ataque do Boss, e para trás no dano
-       const finalHeadRotX = baseRotX + bossAttackRotX + damageRotX;
+       // Rotação X: Inclina para frente no pouso, para cima nas bombas celestiais/oblíquas, e para trás no dano
+       const finalHeadRotX = baseRotX + bossLandingRotX + skyHeadRotX + obliqueHeadRotX + damageRotX;
        parts.head.rotation.x = THREE.MathUtils.lerp(parts.head.rotation.x, finalHeadRotX, delta * 15);
 
        parts.head.position.z = parts.head.userData.origPos.z + (isDamagedActive ? 0 : Math.sin(t * 2) * 0.1);
@@ -335,26 +592,83 @@ export default function RobotModel({
       rightHandZOffset = Math.sin(t * 2 + 0.4) * 0.15; // Idle base (Up)
       leftHandZOffset = Math.sin(t * 2 + 0.4) * 0.15;
 
-      // Ataque do Boss: braços sobem o triplo (4.5 ao invés de 1.5)
-      if (charge > 0.01) {
-        const tremble = Math.sin(t * 50) * 0.05 * charge;
-        rightHandZOffset += (4.5 * charge) + tremble;
-        rightHandYOffset += 0.5 * charge;
+      // Animação de Pouso do Boss: braços erguidos com tremor rápido (antiga animação da bomba)
+      if (landingCharge > 0.01) {
+        const landingTremble = Math.sin(t * 50) * 0.05 * landingCharge;
+        rightHandZOffset += (4.5 * landingCharge) + landingTremble;
+        rightHandYOffset += 0.5 * landingCharge;
 
-        leftHandZOffset += (4.5 * charge) - tremble;
-        leftHandYOffset += 0.5 * charge;
+        leftHandZOffset += (4.5 * landingCharge) - landingTremble;
+        leftHandYOffset += 0.5 * landingCharge;
       }
 
-      if (currentAction === 'throw') {
-        actionTime.current += delta * 2;
-        const at = actionTime.current;
-        if (at < 1) {
-          rightHandZOffset += Math.sin(at * Math.PI) * 2; // Up
-          rightHandYOffset += -Math.sin(at * Math.PI) * 2; // Pull Back
-        } else {
-          setCurrentAction(null);
+      // Nova Animação do Boss: Sobe uma mão de cada vez (0.2s), atirando bombas pro céu (0.5s)
+      if (isSkyBombing) {
+        const count = skyBombAttack?.bombsCount || 5;
+        for (let i = 0; i < count; i++) {
+          const tStart = i * 0.2;
+          const tPeak = tStart + 0.2;
+          const tEnd = tPeak + 0.5;
+
+          if (skyBombElapsed >= tStart && skyBombElapsed < tEnd) {
+            let armProgress = 0;
+            if (skyBombElapsed < tPeak) {
+              const p = (skyBombElapsed - tStart) / 0.2;
+              armProgress = Math.sin(p * Math.PI * 0.5);
+            } else {
+              const p = (skyBombElapsed - tPeak) / 0.5;
+              armProgress = 1.0 - p;
+            }
+
+            const zLift = armProgress * 3.8;
+            const yLift = armProgress * 0.6;
+
+            if (i % 2 === 0) {
+              rightHandZOffset += zLift;
+              rightHandYOffset += yLift;
+            } else {
+              leftHandZOffset += zLift;
+              leftHandYOffset += yLift;
+            }
+          }
         }
-      } else if (currentAction === 'shoot') {
+      }
+
+      // Nova Animação de Lançamento de Bombas Oblíquas (Jogador e NPC):
+      // Sobe uma mão de cada vez em 0.2s, arremessa no ápice e retorna a mão em 0.5s.
+      // Se for mais de uma bomba, alterna as mãos (direita para índice par, esquerda para índice ímpar).
+      if (isObliqueBombing) {
+        const count = activeBomb?.bombsCount || 1;
+        for (let i = 0; i < count; i++) {
+          const tStart = i * 0.4;
+          const tPeak = tStart + 0.2;
+          const tEnd = tPeak + 0.5;
+
+          if (obliqueBombElapsed >= tStart && obliqueBombElapsed < tEnd) {
+            let armProgress = 0;
+            if (obliqueBombElapsed < tPeak) {
+              const p = (obliqueBombElapsed - tStart) / 0.2;
+              armProgress = Math.sin(p * Math.PI * 0.5);
+            } else {
+              const p = (obliqueBombElapsed - tPeak) / 0.5;
+              armProgress = 1.0 - p;
+            }
+
+            const zLift = armProgress * 2.8;
+            const yPush = -armProgress * 1.2;
+
+            if (i % 2 === 0) {
+              rightHandZOffset += zLift;
+              rightHandYOffset += yPush;
+            } else {
+              leftHandZOffset += zLift;
+              leftHandYOffset += yPush;
+            }
+          }
+        }
+      }
+
+      if (currentAction === 'shoot') {
         actionTime.current += delta * 5;
         const at = actionTime.current;
         if (at < 1) {
@@ -444,12 +758,12 @@ export default function RobotModel({
               rotation={node.userData.origRot}
               castShadow
             >
-              <Outlines thickness={2} color="#185A74" />
+              <Outlines thickness={2} color={currentOutlineColor} />
             </mesh>
           ))
         ) : (
           clonedScene.children.map(child => (
-            <RecursiveModel key={child.uuid} node={child} modelType={modelType} partsMap={parts} />
+            <RecursiveModel key={child.uuid} node={child} modelType={modelType} partsMap={parts} outlineColor={currentOutlineColor} />
           ))
         )}
       </group>
@@ -496,6 +810,9 @@ export default function RobotModel({
           </mesh>
         )}
       </group>
+
+      {/* Mini-bombas atiradas para o céu pelo Boss */}
+      <BossSkyBombs skyBombAttack={skyBombAttack} scaleMultiplier={scaleMultiplier} />
     </group>
   );
 }

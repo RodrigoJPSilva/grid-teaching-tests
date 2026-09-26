@@ -8,13 +8,13 @@ import React, { useState } from 'react';
 import MenuRobotHead from './MenuRobotHead';
 import DemoArena from './DemoArena';
 
-export default function MainMenu({ onStart, shouldClearCode, setShouldClearCode }) {
+export default function MainMenu({ onStart, onOpenDemo, shouldClearCode, setShouldClearCode }) {
   const [gridSize, setGridSize] = useState(10);
   const [activeSubmenu, setActiveSubmenu] = useState(null); // null | 'difficulty' | 'options' | 'demos'
   const [activeDemo, setActiveDemo] = useState(null);
 
-  // Se uma demonstração/tutorial estiver ativa, renderiza o DemoArena
-  if (activeDemo) {
+  // Se uma demonstração/tutorial estiver ativa internamente (fallback sem onOpenDemo)
+  if (!onOpenDemo && activeDemo) {
     return (
       <DemoArena
         type={activeDemo}
@@ -26,6 +26,14 @@ export default function MainMenu({ onStart, shouldClearCode, setShouldClearCode 
 
   const handleStartGame = (difficulty) => {
     onStart(difficulty, gridSize);
+  };
+
+  const handleSelectDemo = (type) => {
+    if (onOpenDemo) {
+      onOpenDemo(type);
+    } else {
+      setActiveDemo(type);
+    }
   };
 
   const handleOpenCredits = () => {
@@ -163,7 +171,7 @@ export default function MainMenu({ onStart, shouldClearCode, setShouldClearCode 
               <div className="itb-demos-list">
                 <button
                   className="itb-sub-btn"
-                  onClick={() => setActiveDemo('teleport')}
+                  onClick={() => handleSelectDemo('teleport')}
                 >
                   <span className="itb-sub-title">⚡ TELETRANSPORTE</span>
                   <span className="itb-sub-desc">Movimentação instantânea por grid-column e grid-row.</span>
@@ -171,7 +179,7 @@ export default function MainMenu({ onStart, shouldClearCode, setShouldClearCode 
 
                 <button
                   className="itb-sub-btn"
-                  onClick={() => setActiveDemo('bomb')}
+                  onClick={() => handleSelectDemo('bomb')}
                 >
                   <span className="itb-sub-title">💣 LANÇAMENTO DE BOMBA</span>
                   <span className="itb-sub-desc">Ataque em área 3x3 com onda expansiva de choque.</span>
@@ -179,7 +187,7 @@ export default function MainMenu({ onStart, shouldClearCode, setShouldClearCode 
 
                 <button
                   className="itb-sub-btn"
-                  onClick={() => setActiveDemo('sniper')}
+                  onClick={() => handleSelectDemo('sniper')}
                 >
                   <span className="itb-sub-title">🎯 DISPARO DE SNIPER</span>
                   <span className="itb-sub-desc">Tiro de precisão cirúrgica de longa distância.</span>
