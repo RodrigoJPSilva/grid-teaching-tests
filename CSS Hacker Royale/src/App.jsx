@@ -9,6 +9,7 @@ import { useGameState } from './hooks/useGameState';
 import { parsePlayerCode, getActiveEditorClass } from './utils/GameEngine';
 import MainMenu from './components/MainMenu';
 import DemoArena from './components/DemoArena';
+import LoadingScreen from './components/LoadingScreen';
 import './App.css';
 
 const EMPTY_CSS = `.player {
@@ -35,7 +36,7 @@ export default function App() {
   const [sniperShootTrigger, setSniperShootTrigger] = useState(0);
 
   // User Preference
-  const [shouldClearCode, setShouldClearCode] = useState(true);
+  const [shouldClearCode, setShouldClearCode] = useState(false);
 
   // States for the Cheatsheet and Alerts
   const [cheatsheetHovered, setCheatsheetHovered] = useState(false);
@@ -52,28 +53,17 @@ export default function App() {
     isIntroActive: false
   });
 
-  // ── Sistema de Transição com Fade de 2s para Preto ──────────
-  const [fadeState, setFadeState] = useState({
-    active: false,
-    opacity: 0,
+  // ── Sistema de Loading com Robô 3D e HUD 0-100% ────────────
+  const [loadingState, setLoadingState] = useState({
+    active: true, // Inicia ativo no boot inicial da aplicação
+    key: 'boot',
+    title: 'INICIALIZANDO SISTEMA HACKER',
+    minDuration: 1500,
+    onOpaque: null,
+    onComplete: () => {
+      setLoadingState(prev => ({ ...prev, active: false }));
+    }
   });
-
-  const triggerFadeTransition = useCallback((onMidpoint, onComplete) => {
-    setFadeState({ active: true, opacity: 0 });
-    requestAnimationFrame(() => {
-      setFadeState({ active: true, opacity: 1 });
-    });
-
-    setTimeout(() => {
-      if (onMidpoint) onMidpoint();
-      setFadeState({ active: true, opacity: 0 });
-
-      setTimeout(() => {
-        setFadeState({ active: false, opacity: 0 });
-        if (onComplete) onComplete();
-      }, 2000);
-    }, 2000);
-  }, []);
 
   useEffect(() => {
     if (gameAlert) {
@@ -96,27 +86,51 @@ export default function App() {
   }, [gameState]);
 
   const handleStartGame = (difficulty, gridSize) => {
-    triggerFadeTransition(
-      () => {
+    setLoadingState({
+      active: true,
+      key: `game-${Date.now()}`,
+      title: `CARREGANDO ARENA [${difficulty.toUpperCase()}]`,
+      minDuration: 1500,
+      onOpaque: () => {
         gameState.startGame(difficulty, gridSize);
       },
-      () => {
-        const now = Date.now();
-        setPlayerSpawnTime(now);
-        gameState.resetSpawnTimes(now);
+      onComplete: () => {
+        setLoadingState(prev => ({ ...prev, active: false }));
+        // 1 segundo a mais para iniciar as animações de surgimento dos robôs após o término do loader
+        const spawnStart = Date.now() + 1000;
+        setPlayerSpawnTime(spawnStart);
+        gameState.resetSpawnTimes(spawnStart);
       }
-    );
+    });
   };
 
   const handleOpenDemo = (demoType) => {
-    triggerFadeTransition(() => {
-      setActiveDemo(demoType);
+    setLoadingState({
+      active: true,
+      key: `demo-${demoType}-${Date.now()}`,
+      title: `SIMULAÇÃO TÁTICA: ${demoType.toUpperCase()}`,
+      minDuration: 1500,
+      onOpaque: () => {
+        setActiveDemo(demoType);
+      },
+      onComplete: () => {
+        setLoadingState(prev => ({ ...prev, active: false }));
+      }
     });
   };
 
   const handleCloseDemo = () => {
-    triggerFadeTransition(() => {
-      setActiveDemo(null);
+    setLoadingState({
+      active: true,
+      key: `menu-${Date.now()}`,
+      title: 'RETORNANDO AO MENU PRINCIPAL',
+      minDuration: 1500,
+      onOpaque: () => {
+        setActiveDemo(null);
+      },
+      onComplete: () => {
+        setLoadingState(prev => ({ ...prev, active: false }));
+      }
     });
   };
 
@@ -219,77 +233,26 @@ export default function App() {
 
   const currentRobotTool = cheatsheetHovered ? 'papel' : activeTool;
 
-  // ── Render ────────────────────────────────────────────────
-  if (activeDemo) {
-    return (
-      <>
+  // ── Render Unificado ───────────────────────────────────────
+  const activeBoss = Object.values(gameState.enemies).find(e => e.hp > 0 && e.type === 'boss');
+
+  return (
+    <>
+      {activeDemo ? (
         <DemoArena
           type={activeDemo}
           onClose={handleCloseDemo}
           onSwitch={setActiveDemo}
         />
-        {fadeState.active && (
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: '#000000',
-              zIndex: 999999,
-              pointerEvents: 'all',
-              opacity: fadeState.opacity,
-              transition: 'opacity 2000ms ease-in-out',
-            }}
-          />
-        )}
-      </>
-    );
-  }
-
-  if (gameState.phase === 'menu') {
-    return (
-      <>
+      ) : gameState.phase === 'menu' ? (
         <MainMenu
           onStart={handleStartGame}
           onOpenDemo={handleOpenDemo}
           shouldClearCode={shouldClearCode}
           setShouldClearCode={setShouldClearCode}
         />
-        {fadeState.active && (
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: '#000000',
-              zIndex: 999999,
-              pointerEvents: 'all',
-              opacity: fadeState.opacity,
-              transition: 'opacity 2000ms ease-in-out',
-            }}
-          />
-        )}
-      </>
-    );
-  }
-
-  const activeBoss = Object.values(gameState.enemies).find(e => e.hp > 0 && e.type === 'boss');
-
-  return (
-    <div className="app-root">
-
-      {/* Overlay de Transição (Fade In / Fade Out de 2s) */}
-      {fadeState.active && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: '#000000',
-            zIndex: 999999,
-            pointerEvents: 'all',
-            opacity: fadeState.opacity,
-            transition: 'opacity 2000ms ease-in-out',
-          }}
-        />
-      )}
+      ) : (
+        <div className="app-root">
 
       {/* Letterbox Cinematográfico do Boss */}
       {bossIntroState.letterbox && (
@@ -451,6 +414,19 @@ export default function App() {
         </div>
       </div>
 
-    </div>
+        </div>
+      )}
+
+      {/* Tela de Carregamento Global com Fade In e Fade Out */}
+      {loadingState.active && (
+        <LoadingScreen
+          key={loadingState.key || 'loader'}
+          title={loadingState.title}
+          onOpaque={loadingState.onOpaque}
+          onComplete={loadingState.onComplete}
+          minDuration={loadingState.minDuration || 1500}
+        />
+      )}
+    </>
   );
 }

@@ -295,7 +295,7 @@ export default function RobotModel({
     const nowSec = performance.now() / 1000;
     const spawnDuration = modelType === 'player' ? 2.0 : 3.0;
     const spawnElapsed = spawnTime > 0 ? (Date.now() - spawnTime) / 1000 : 999;
-    const isSpawning = spawnTime > 0 && spawnElapsed < spawnDuration;
+    const isSpawning = spawnTime > 0 && spawnElapsed >= 0 && spawnElapsed < spawnDuration;
 
     let skyYOffset = 0;
     if (isSpawning) {

@@ -75,24 +75,33 @@ export default function DemoArena({ type, onClose, onSwitch }) {
     let active = true;
 
     if (type === 'teleport') {
-      const interval = setInterval(() => {
+      let interval;
+      // Primeiro salto com atraso extra de +0.5s (3000ms), subsequentes no ritmo de 2500ms
+      const initialTimer = setTimeout(() => {
         if (!active) return;
-        const newCol = Math.floor(Math.random() * 5) + 1;
-        const newRow = Math.floor(Math.random() * 5) + 1;
-        // Evita cair em cima do inimigo em (5, 5)
-        if (newCol === 5 && newRow === 5) {
-          setPlayerColRow([3, 3]);
-        } else {
-          setPlayerColRow([newCol, newRow]);
-        }
-      }, 2500);
+        const doTeleport = () => {
+          if (!active) return;
+          const newCol = Math.floor(Math.random() * 5) + 1;
+          const newRow = Math.floor(Math.random() * 5) + 1;
+          // Evita cair em cima do inimigo em (5, 5)
+          if (newCol === 5 && newRow === 5) {
+            setPlayerColRow([3, 3]);
+          } else {
+            setPlayerColRow([newCol, newRow]);
+          }
+        };
+        doTeleport();
+        interval = setInterval(doTeleport, 2500);
+      }, 3000);
 
       return () => {
         active = false;
-        clearInterval(interval);
+        clearTimeout(initialTimer);
+        if (interval) clearInterval(interval);
       };
     } 
     else if (type === 'bomb') {
+      let isFirst = true;
       const runSequence = () => {
         if (!active) return;
         setPlayerColRow([2, 2]);
@@ -100,6 +109,10 @@ export default function DemoArena({ type, onClose, onSwitch }) {
         setBombActive(false);
         setWaveHits([]);
         setEnemyHp(3);
+
+        // +0.5s extra apenas na primeira vez que a tela de demonstração abre (2000ms vs 1500ms)
+        const delay = isFirst ? 2000 : 1500;
+        isFirst = false;
 
         setTimeout(() => {
           if (!active) return;
@@ -128,18 +141,23 @@ export default function DemoArena({ type, onClose, onSwitch }) {
             }, 3000);
           }, 5000);
 
-        }, 1500);
+        }, delay);
       };
 
       runSequence();
       return () => { active = false; };
     }
     else if (type === 'sniper') {
+      let isFirst = true;
       const runSequence = () => {
         if (!active) return;
         setPlayerColRow([2, 2]);
         setEnemyHp(3);
         setHitTiles([]);
+
+        // +0.5s extra apenas na primeira vez que a tela de demonstração abre (2000ms vs 1500ms)
+        const delay = isFirst ? 2000 : 1500;
+        isFirst = false;
 
         setTimeout(() => {
           if (!active) return;
@@ -157,7 +175,7 @@ export default function DemoArena({ type, onClose, onSwitch }) {
             }, 3000);
           }, 100);
 
-        }, 1500);
+        }, delay);
       };
 
       runSequence();

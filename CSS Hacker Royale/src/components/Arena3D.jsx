@@ -173,8 +173,8 @@ export default function Arena3D({
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
-      const isPlayerSpawning = playerSpawnTime > 0 && (now - playerSpawnTime < 2500);
-      const isEnemySpawning = Object.values(enemies).some(e => e.spawnTime > 0 && (now - e.spawnTime < 3500));
+      const isPlayerSpawning = playerSpawnTime > 0 && now >= playerSpawnTime && (now - playerSpawnTime < 2500);
+      const isEnemySpawning = Object.values(enemies).some(e => e.spawnTime > 0 && now >= e.spawnTime && (now - e.spawnTime < 3500));
       if (isPlayerSpawning || isEnemySpawning) {
         setSpawnTick(t => t + 1);
       }
@@ -260,7 +260,7 @@ export default function Arena3D({
 
       if (bossIntroPhase === 'waiting_player') {
         // Aguarda jogador pousar (2s após spawnTime)
-        const playerLanded = playerSpawnTime > 0 && (now - playerSpawnTime >= 2000);
+        const playerLanded = playerSpawnTime > 0 && now >= playerSpawnTime && (now - playerSpawnTime >= 2000);
         if (playerLanded) {
           setBossIntroPhase('zoom_in');
           bossPhaseTimerRef.current = now;
@@ -424,7 +424,7 @@ export default function Arena3D({
     : (bombCountdown > 0 ? gameState.bomba : null);
 
   const now = Date.now();
-  const isPlayerDescending = playerSpawnTime > 0 && (now - playerSpawnTime < 1500);
+  const isPlayerDescending = playerSpawnTime > 0 && now >= playerSpawnTime && (now - playerSpawnTime < 1500);
 
   const occupiedTiles = [
     { col: gameState.player.col, row: gameState.player.row, type: isPlayerDescending ? 'descending' : 'player' }
@@ -432,7 +432,7 @@ export default function Arena3D({
 
   enemiesInRoom.forEach(e => {
     const isBoss = e.type === 'boss';
-    const isEnemyDescending = e.spawnTime > 0 && (now - e.spawnTime < 2500);
+    const isEnemyDescending = e.spawnTime > 0 && now >= e.spawnTime && (now - e.spawnTime < 2500);
     const currentFootprint = isBoss ? bossFootprint : e.size;
 
     for (let c = 0; c < currentFootprint[0]; c++) {
@@ -504,7 +504,7 @@ export default function Arena3D({
           damageTrigger={playerDamageTrigger}
           spawnTime={playerSpawnTime}
           onLanded={handlePlayerLanded}
-          isAwaitingSpawn={playerSpawnTime === 0}
+          isAwaitingSpawn={playerSpawnTime === 0 || now < playerSpawnTime}
         />
       </group>
 
@@ -515,7 +515,7 @@ export default function Arena3D({
             enemy={enemy}
             arenaSize={arenaSize}
             onLanded={() => handleEnemyLanded(enemy)}
-            isAwaitingSpawn={enemy.type === 'boss' ? (bossIntroPhase === 'waiting_player' || bossIntroPhase === 'zoom_in' || (!bossIntroPhase && enemy.spawnTime === 0)) : (enemy.spawnTime === 0)}
+            isAwaitingSpawn={enemy.type === 'boss' ? (bossIntroPhase === 'waiting_player' || bossIntroPhase === 'zoom_in' || (!bossIntroPhase && (enemy.spawnTime === 0 || now < enemy.spawnTime))) : (enemy.spawnTime === 0 || now < enemy.spawnTime)}
             scaleOverride={enemy.type === 'boss' ? bossScale : null}
           />
         ))}
