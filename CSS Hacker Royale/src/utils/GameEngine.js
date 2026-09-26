@@ -10,8 +10,8 @@ const ARENA_SIZE = 6;
  */
 export function gridToPosition3D(col, row, arenaSize = 6) {
   const halfGrid = (arenaSize - 1) / 2;
-  const x = (row - 1 - halfGrid) * CELL_SIZE;
-  const z = (col - 1 - halfGrid) * CELL_SIZE;
+  const x = (col - 1 - halfGrid) * CELL_SIZE;
+  const z = (row - 1 - halfGrid) * CELL_SIZE;
   return [x, 0.21, z];
 }
 

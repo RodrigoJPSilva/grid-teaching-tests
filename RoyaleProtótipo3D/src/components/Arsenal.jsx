@@ -1,6 +1,6 @@
 // ============================================================
 //  Arsenal.jsx — Painel de Armas do CSS Hacker Royale
-//  Turma 3DM SENAI — Seleção e status das 3 armas CSS
+//  Projeto de aprendizado — Seleção e status das 3 armas CSS
 //
 //  Armas:
 //   🎯 Sniper de Grid  → grid-area exato

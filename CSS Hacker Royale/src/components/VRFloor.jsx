@@ -298,8 +298,8 @@ export default function VRFloor({ occupiedTiles = [], hitTiles = [], previewTile
     const arr = [];
     for (let row = 0; row < gridSize; row++) {
       for (let col = 0; col < gridSize; col++) {
-        const x = (row - halfGrid) * CELL_SIZE;
-        const z = (col - halfGrid) * CELL_SIZE;
+        const x = (col - halfGrid) * CELL_SIZE;
+        const z = (row - halfGrid) * CELL_SIZE;
         arr.push({ col: col + 1, row: row + 1, x, z, key: `cell-${row}-${col}` });
       }
     }

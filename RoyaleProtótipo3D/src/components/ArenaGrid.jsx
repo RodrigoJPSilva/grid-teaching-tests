@@ -1,6 +1,6 @@
 // ============================================================
 //  ArenaGrid.jsx — O campo de batalha CSS Grid 6x6
-//  Turma 3DM SENAI — Componente Principal de Combate
+//  Projeto de aprendizado — Componente Principal de Combate
 //
 //  CSS Conceitos implementados:
 //   - display: grid

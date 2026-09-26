@@ -18,7 +18,7 @@ function ConfigMenu({ onStart }) {
     <div className="menu-overlay">
       <div className="menu-box">
         <h1 className="menu-title">CSS HACKER<br/>ROYALE</h1>
-        <p className="menu-sub">Turma 3DM — SENAI Suíço-Brasileira</p>
+        <p className="menu-sub">Projeto de aprendizado</p>
 
         <div className="menu-field">
           <label>NÚMERO DE BOTS (1–5):</label>

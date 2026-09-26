@@ -179,14 +179,14 @@ export function BombArea({ centerCol, centerRow, arenaSize = 10, color = '#00ff8
     const colsCount = maxCol - minCol + 1;
     const rowsCount = maxRow - minRow + 1;
 
-    width = rowsCount * CELL_SIZE;
-    depth = colsCount * CELL_SIZE;
+    width = colsCount * CELL_SIZE;
+    depth = rowsCount * CELL_SIZE;
 
     const midCol = (minCol + maxCol) / 2;
     const midRow = (minRow + maxRow) / 2;
 
-    cx = (midRow - 1 - halfGrid) * CELL_SIZE;
-    cz = (midCol - 1 - halfGrid) * CELL_SIZE;
+    cx = (midCol - 1 - halfGrid) * CELL_SIZE;
+    cz = (midRow - 1 - halfGrid) * CELL_SIZE;
   } else if (position) {
     cx = position[0];
     cz = position[2];

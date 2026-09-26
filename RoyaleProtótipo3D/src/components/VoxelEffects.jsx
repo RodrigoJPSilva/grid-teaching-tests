@@ -1,6 +1,6 @@
 // ============================================================
 //  VoxelEffects.jsx — Efeitos Visuais 3D de Tiro na Arena
-//  Turma 3DM SENAI Suíço-Brasileira
+//  Projeto de aprendizado
 //
 //  Cada arma gera um efeito visual 3D diferente:
 //   🎯 Sniper:  Coluna de luz vertical que desce sobre a célula

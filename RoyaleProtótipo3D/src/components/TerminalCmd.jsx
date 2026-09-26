@@ -1,6 +1,6 @@
 // ============================================================
 //  TerminalCmd.jsx — Terminal de Navegação (fase de looting)
-//  Turma 3DM SENAI — CMD Simulator com filesystem virtual
+//  Projeto de aprendizado — CMD Simulator com filesystem virtual
 //
 //  Comandos suportados:
 //   - dir      → lista conteúdo da pasta atual

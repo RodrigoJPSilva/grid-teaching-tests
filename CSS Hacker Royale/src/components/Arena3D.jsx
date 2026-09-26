@@ -72,10 +72,10 @@ function BossWaveImpactArea({ centerCol, centerRow, arenaSize = 10 }) {
   const midRow = (minR + maxR) / 2;
   const midCol = (minC + maxC) / 2;
 
-  const cx = (midRow - 1 - halfGrid) * CELL_SIZE;
-  const cz = (midCol - 1 - halfGrid) * CELL_SIZE;
-  const width = rowsCount * CELL_SIZE;
-  const depth = colsCount * CELL_SIZE;
+  const cx = (midCol - 1 - halfGrid) * CELL_SIZE;
+  const cz = (midRow - 1 - halfGrid) * CELL_SIZE;
+  const width = colsCount * CELL_SIZE;
+  const depth = rowsCount * CELL_SIZE;
 
   return (
     <mesh position={[cx, 0.015, cz]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={1}>

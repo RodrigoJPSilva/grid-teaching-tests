@@ -1,6 +1,6 @@
 // ============================================================
 //  CSS HACKER ROYALE — Game Constants & Data
-//  Turma 3DM SENAI Suíço-Brasileira
+//  Projeto de aprendizado
 // ============================================================
 
 /**

@@ -1,6 +1,6 @@
 // ============================================================
 //  gridTo3D.js — Mapeamento de Coordenadas 2D Grid → 3D Voxel
-//  Turma 3DM SENAI Suíço-Brasileira
+//  Projeto de aprendizado
 //
 //  COMO FUNCIONA O MAPEAMENTO:
 //
