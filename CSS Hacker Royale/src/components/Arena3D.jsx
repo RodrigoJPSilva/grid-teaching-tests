@@ -11,6 +11,8 @@ import VRFloor from './VRFloor';
 import VoxelEnemy from './VoxelEnemy';
 import Player from './Player';
 import Bomb, { BombArea } from './Bomb';
+import ArenaTV from './ArenaTV';
+import { soundManager } from '../utils/SoundManager';
 
 function LightBootSequence() {
   const ambientLightRef = useRef();
@@ -105,17 +107,44 @@ function CameraRig({ screenShakeTime }) {
   return null;
 }
 
-// ── Controlador Cinemático de Câmera da Aparição do Boss ─────────
-function CinematicCameraController({ introPhase, bossPos3D, defaultZoom = 40 }) {
+// ── Controlador Multi-Câmeras: 3D, 2D e Livre + Cinemática do Boss ──
+function CameraController({ cameraMode = '3D', arenaSize = 10, introPhase = null, bossPos3D = null }) {
   const { camera } = useThree();
   const controlsRef = useRef();
+
+  // Zoom dinâmico calibrado para enquadramento justo conforme Imagem 4
+  const zoom3D = useMemo(() => Math.round((48 * 10) / arenaSize), [arenaSize]);
+  const zoom2D = useMemo(() => Math.round((42 * 10) / arenaSize), [arenaSize]);
+
+  // Alvos da Câmera
+  const targets = useMemo(() => ({
+    '3D': {
+      pos: new THREE.Vector3(0, 14, 14),
+      lookAt: new THREE.Vector3(0, 0, 0),
+      up: new THREE.Vector3(0, 1, 0),
+      zoom: zoom3D
+    },
+    '2D': {
+      pos: new THREE.Vector3(-0.8, 25, 0),
+      lookAt: new THREE.Vector3(-0.8, 0, 0),
+      up: new THREE.Vector3(0, 0, -1), // Garante que -Z é UP e +X é RIGHT (Imagem 3)
+      zoom: zoom2D
+    },
+    'livre': {
+      pos: new THREE.Vector3(0, 14, 14),
+      lookAt: new THREE.Vector3(0, 0, 0),
+      up: new THREE.Vector3(0, 1, 0),
+      zoom: zoom3D
+    }
+  }), [zoom3D, zoom2D]);
 
   useFrame((state, delta) => {
     if (!camera) return;
 
+    // Prioridade 1: Cinemática do Boss (zoom in / descent / growth)
     if (introPhase === 'zoom_in' || introPhase === 'boss_descent' || introPhase === 'mario_growth') {
       if (bossPos3D) {
-        // Zoom e foco no Boss (0.5s de aproximação)
+        camera.up.set(0, 1, 0);
         const targetX = bossPos3D[0] + 5;
         const targetY = 6;
         const targetZ = bossPos3D[2] + 5;
@@ -128,15 +157,21 @@ function CinematicCameraController({ introPhase, bossPos3D, defaultZoom = 40 }) 
           controlsRef.current.update();
         }
         camera.updateProjectionMatrix();
+        return;
       }
-    } else if (introPhase === 'zoom_out') {
-      // Retirando zoom de forma animada (0.5s) para a posição padrão frontal
-      camera.position.x = THREE.MathUtils.lerp(camera.position.x, 0, delta * 6);
-      camera.position.y = THREE.MathUtils.lerp(camera.position.y, 14, delta * 6);
-      camera.position.z = THREE.MathUtils.lerp(camera.position.z, 14, delta * 6);
-      camera.zoom = THREE.MathUtils.lerp(camera.zoom, defaultZoom, delta * 6);
+    }
+
+    // Prioridade 2: Transição de Câmera ou retorno do zoom out do Boss
+    if (cameraMode !== 'livre' || introPhase === 'zoom_out') {
+      const activePreset = targets[cameraMode] || targets['3D'];
+      const speed = delta * 6;
+
+      camera.position.lerp(activePreset.pos, speed);
+      camera.up.lerp(activePreset.up, speed);
+      camera.zoom = THREE.MathUtils.lerp(camera.zoom, activePreset.zoom, speed);
+
       if (controlsRef.current) {
-        controlsRef.current.target.lerp(new THREE.Vector3(0, 0, 0), delta * 6);
+        controlsRef.current.target.lerp(activePreset.lookAt, speed);
         controlsRef.current.update();
       }
       camera.updateProjectionMatrix();
@@ -146,7 +181,9 @@ function CinematicCameraController({ introPhase, bossPos3D, defaultZoom = 40 }) 
   return (
     <OrbitControls
       ref={controlsRef}
-      enabled={introPhase === null || introPhase === 'completed'}
+      enabled={cameraMode === 'livre' && (introPhase === null || introPhase === 'completed')}
+      enableDamping
+      dampingFactor={0.1}
     />
   );
 }
@@ -164,6 +201,9 @@ export default function Arena3D({
   onBossIntroChange = null,
   triggerBossDescent = null,
   completeBossIntro = null,
+  cameraMode = '3D',
+  tutorialStep = 0,
+  currentLevel = 1,
 }) {
   const [playerDamageTrigger, setPlayerDamageTrigger] = useState(0);
   const prevPlayerHp = useRef(playerHp);
@@ -204,6 +244,7 @@ export default function Arena3D({
 
   if (isMoving) {
     lastPlayerPos.current = { col: gameState.player.col, row: gameState.player.row };
+    soundManager.playMove();
     setTimeout(() => { if (playerRevealed) setPlayerRevealed(false); }, 0);
   }
 
@@ -241,8 +282,9 @@ export default function Arena3D({
         setBossIntroPhase('waiting_player');
         bossPhaseTimerRef.current = Date.now();
       } else {
-        setBossIntroPhase('zoom_in');
+        setBossIntroPhase('perigo_warning');
         bossPhaseTimerRef.current = Date.now();
+        soundManager.startDangerSiren(2600);
         if (onBossIntroChange) {
           onBossIntroChange({ letterbox: true, showHp: false, hpFillPercent: 0, isIntroActive: true });
         }
@@ -262,11 +304,18 @@ export default function Arena3D({
         // Aguarda jogador pousar (2s após spawnTime)
         const playerLanded = playerSpawnTime > 0 && now >= playerSpawnTime && (now - playerSpawnTime >= 2000);
         if (playerLanded) {
-          setBossIntroPhase('zoom_in');
+          setBossIntroPhase('perigo_warning');
           bossPhaseTimerRef.current = now;
+          soundManager.startDangerSiren(2600);
           if (onBossIntroChange) {
             onBossIntroChange({ letterbox: true, showHp: false, hpFillPercent: 0, isIntroActive: true });
           }
+        }
+      } else if (bossIntroPhase === 'perigo_warning') {
+        // 2.6s de tela de PERIGO piscando a 0.2s na TV com sirene de alarme
+        if (elapsed >= 2600) {
+          setBossIntroPhase('zoom_in');
+          bossPhaseTimerRef.current = now;
         }
       } else if (bossIntroPhase === 'zoom_in') {
         // 0.5s de zoom e foco
@@ -350,16 +399,21 @@ export default function Arena3D({
   useEffect(() => {
     if (sniperShootTrigger > 0 && gameState.sniper) {
       setHitEffects(prev => [...prev, { col: gameState.sniper.col, row: gameState.sniper.row, time: Date.now() }]);
+      soundManager.playSniperShot();
     }
   }, [sniperShootTrigger, gameState.sniper]);
 
   const wasCounting = useRef(false);
   useEffect(() => {
-    if (bombCountdown > 0) wasCounting.current = true;
+    if (bombCountdown > 0) {
+      wasCounting.current = true;
+      soundManager.playBombBeep();
+    }
     if (wasCounting.current && bombCountdown === 0) {
       wasCounting.current = false;
       if (gameState.bomba) {
         setWaveHits(prev => [...prev, { col: gameState.bomba.col, row: gameState.bomba.row, time: Date.now() }]);
+        soundManager.playExplosion();
       }
     }
   }, [bombCountdown, gameState.bomba]);
@@ -374,6 +428,7 @@ export default function Arena3D({
           enemyBombImpacted.current.add(b.id);
           setWaveHits(prev => [...prev, { col: b.col, row: b.row, time: now }]);
           setHitEffects(prev => [...prev, { col: b.col, row: b.row, time: now }]);
+          soundManager.playExplosion();
         }
       });
     }, 100);
@@ -405,6 +460,7 @@ export default function Arena3D({
           { col: col + 1, row: row + 1, time: now }
         ]);
         setScreenShake(now);
+        soundManager.playBossLand();
       }
     });
   }, [enemiesInRoom]);
@@ -412,7 +468,10 @@ export default function Arena3D({
   // ── Throw start position ──
   const throwerPosRef = useRef(playerPos3D);
   useEffect(() => {
-    if (bombThrowTrigger > 0) throwerPosRef.current = [...playerPos3D];
+    if (bombThrowTrigger > 0) {
+      throwerPosRef.current = [...playerPos3D];
+      soundManager.playBombLaunch();
+    }
   }, [bombThrowTrigger, playerPos3D]);
 
   const activeSniperTarget = previewState?.sniper?.col
@@ -477,21 +536,33 @@ export default function Arena3D({
   else if (activeTool) playerLookAt = 'weapon';
 
   const handlePlayerLanded = () => {};
-  const handleEnemyLanded = () => {};
+  const defaultZoom3D = Math.round((48 * 10) / arenaSize);
 
   return (
     <Canvas
       gl={{ antialias: true, powerPreference: 'high-performance', alpha: false, stencil: false, depth: true }}
       dpr={[1, 2]}
-      onCreated={({ gl }) => gl.setClearColor('#000000')}
+      onCreated={({ gl }) => gl.setClearColor('#03060a')}
     >
-      <OrthographicCamera makeDefault position={[0, 14, 14]} zoom={40} />
-      <CinematicCameraController introPhase={bossIntroPhase} bossPos3D={bossPos3D} defaultZoom={40} />
+      <OrthographicCamera makeDefault position={[0, 14, 14]} zoom={defaultZoom3D} />
+      <CameraController cameraMode={cameraMode} arenaSize={arenaSize} introPhase={bossIntroPhase} bossPos3D={bossPos3D} />
       <CameraRig screenShakeTime={screenShake} />
 
       <LightBootSequence />
 
       <VRFloor occupiedTiles={occupiedTiles} hitTiles={hitTiles} previewTiles={previewTiles} waveHits={waveHits} gridSize={arenaSize} onTileClick={onTileClick} />
+
+      {/* Televisão 3D na Arena (Tutorial, HUD e Alerta de Perigo) */}
+      <ArenaTV
+        cameraMode={cameraMode}
+        gridSize={arenaSize}
+        tutorialStep={tutorialStep}
+        isWarningActive={bossIntroPhase === 'perigo_warning'}
+        playerHp={playerHp}
+        enemiesCount={enemiesInRoom.length}
+        currentLevel={currentLevel}
+        difficulty={difficulty}
+      />
 
       <group>
         <Player

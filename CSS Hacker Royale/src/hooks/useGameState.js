@@ -3,6 +3,7 @@
 // ============================================================
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { soundManager } from '../utils/SoundManager';
 
 const WAVES = {
   Facil: {
@@ -81,6 +82,7 @@ export function useGameState() {
   const [difficulty, setDifficulty] = useState('Facil');
   const [currentLevel, setCurrentLevel] = useState(1);
   const [arenaSize, setArenaSize] = useState(10);
+  const [isTutorialActive, setIsTutorialActive] = useState(false);
   
   const [enemies, setEnemies] = useState({});
   const [playerHp, setPlayerHp] = useState(3);
@@ -95,6 +97,7 @@ export function useGameState() {
     const now = Date.now();
     if (now - lastPlayerDamageTime.current < 2000) return false;
     lastPlayerDamageTime.current = now;
+    soundManager.playDamage();
     setPlayerHp(hp => {
       const newHp = Math.max(0, hp - amount);
       if (newHp === 0) setPhase('gameover');
@@ -212,6 +215,7 @@ export function useGameState() {
     lastPlayerDamageTime.current = 0;
     setPhase('playing');
     setIncomingBombs([]);
+    setIsTutorialActive(diff === 'Facil');
     spawnWave(diff, 1, customSize);
   }, [spawnWave]);
 
@@ -279,8 +283,8 @@ export function useGameState() {
               didSomething = true;
             }
           } else {
-            // NPCs normais atiram bombas padrão com animação sincronizada e mãos alternadas
-            if (now - eCopy.lastBombTime > eCopy.bombDelay) {
+            // NPCs normais atiram bombas padrão com animação sincronizada e mãos alternadas (pausados se tutorial estiver ativo)
+            if (!isTutorialActive && now - eCopy.lastBombTime > eCopy.bombDelay) {
               eCopy.lastBombTime = now;
               const bombsCount = eCopy.bombsToFire || 1;
               const totalDurationMs = Math.round(((bombsCount - 1) * 0.4 + 0.7) * 1000);
@@ -476,5 +480,6 @@ export function useGameState() {
     triggerBossDescent,
     completeBossIntro,
     triggerBossJump,
+    isTutorialActive, setIsTutorialActive,
   };
 }

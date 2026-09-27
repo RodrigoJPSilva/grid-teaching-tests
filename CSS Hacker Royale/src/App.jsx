@@ -10,6 +10,7 @@ import { parsePlayerCode, getActiveEditorClass } from './utils/GameEngine';
 import MainMenu from './components/MainMenu';
 import DemoArena from './components/DemoArena';
 import LoadingScreen from './components/LoadingScreen';
+import { soundManager } from './utils/SoundManager';
 import './App.css';
 
 const EMPTY_CSS = `.player {
@@ -46,6 +47,8 @@ export default function App() {
   // Demonstrações ativas e timing de spawn
   const [activeDemo, setActiveDemo] = useState(null);
   const [playerSpawnTime, setPlayerSpawnTime] = useState(0);
+  const [cameraMode, setCameraMode] = useState('3D');
+  const [tutorialStep, setTutorialStep] = useState(1);
   const [bossIntroState, setBossIntroState] = useState({
     letterbox: false,
     showHp: false,
@@ -93,6 +96,11 @@ export default function App() {
       minDuration: 1500,
       onOpaque: () => {
         gameState.startGame(difficulty, gridSize);
+        if (difficulty === 'Facil') {
+          setTutorialStep(1);
+        } else {
+          setTutorialStep(0);
+        }
       },
       onComplete: () => {
         setLoadingState(prev => ({ ...prev, active: false }));
@@ -137,6 +145,7 @@ export default function App() {
   // ── Ação Global: Rodar Código ──────────────────────────────
   const handleExecuteAll = () => {
     if (gameState.phase !== 'playing') return;
+    soundManager.playUIClick();
 
     const parsedCurrent = parsePlayerCode(cssCode);
     const parsedCommitted = parsePlayerCode(committedCssCode);
@@ -188,6 +197,28 @@ export default function App() {
       if (!parsedCommitted.sniper || parsedCurrent.sniper.col !== parsedCommitted.sniper.col || parsedCurrent.sniper.row !== parsedCommitted.sniper.row) {
         setSniperShootTrigger(Date.now());
         gameState.fireSniper(parsedCurrent.sniper.col, parsedCurrent.sniper.row);
+      }
+    }
+
+    // 4. Progressão Automática do Tutorial no Modo Fácil
+    if (gameState.difficulty === 'Facil' && tutorialStep < 4) {
+      if (tutorialStep === 1) {
+        // Passo 1: O jogador moveu seu robô
+        if (targetCol !== undefined && targetRow !== undefined && (targetCol !== 1 || targetRow !== 1)) {
+          setTutorialStep(2);
+        }
+      } else if (tutorialStep === 2) {
+        // Passo 2: O jogador armou ou disparou uma habilidade (bomba ou sniper)
+        if (parsedCurrent.bomba?.col || parsedCurrent.sniper?.col) {
+          setTutorialStep(3);
+          soundManager.playTutorialSuccess();
+          setTimeout(() => {
+            setTutorialStep(4);
+            if (gameState.setIsTutorialActive) {
+              gameState.setIsTutorialActive(false);
+            }
+          }, 2600);
+        }
       }
     }
 
@@ -356,6 +387,34 @@ export default function App() {
           <button className="action-btn execute-btn" onClick={handleExecuteAll}>
             ▶ RODAR CÓDIGO (Ctrl+Enter)
           </button>
+
+          {/* Seletor de Câmeras no canto inferior esquerdo */}
+          <div className="camera-mode-selector">
+            <button
+              type="button"
+              className={`camera-btn ${cameraMode === '3D' ? 'active' : ''}`}
+              onClick={() => { soundManager.playUIClick(); setCameraMode('3D'); }}
+              title="Câmera 3D Enquadramento Próximo"
+            >
+              🎥 3D
+            </button>
+            <button
+              type="button"
+              className={`camera-btn ${cameraMode === '2D' ? 'active' : ''}`}
+              onClick={() => { soundManager.playUIClick(); setCameraMode('2D'); }}
+              title="Câmera 2D Vista Superior"
+            >
+              📐 2D
+            </button>
+            <button
+              type="button"
+              className={`camera-btn ${cameraMode === 'livre' ? 'active' : ''}`}
+              onClick={() => { soundManager.playUIClick(); setCameraMode('livre'); }}
+              title="Câmera Livre Orbit"
+            >
+              🌐 LIVRE
+            </button>
+          </div>
         </div>
       </div>
 
@@ -381,6 +440,9 @@ export default function App() {
           onBossIntroChange={setBossIntroState}
           triggerBossDescent={gameState.triggerBossDescent}
           completeBossIntro={gameState.completeBossIntro}
+          cameraMode={cameraMode}
+          tutorialStep={tutorialStep}
+          currentLevel={gameState.currentLevel}
         />
       </div>
 

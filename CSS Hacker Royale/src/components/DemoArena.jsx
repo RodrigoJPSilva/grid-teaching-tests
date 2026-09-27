@@ -7,6 +7,7 @@ import VRFloor from './VRFloor';
 import Player from './Player';
 import VoxelEnemy from './VoxelEnemy';
 import Bomb, { BombArea } from './Bomb';
+import { soundManager } from '../utils/SoundManager';
 
 function LightBootSequence() {
   const ambientLightRef = useRef();
@@ -89,6 +90,7 @@ export default function DemoArena({ type, onClose, onSwitch }) {
           } else {
             setPlayerColRow([newCol, newRow]);
           }
+          soundManager.playMove();
         };
         doTeleport();
         interval = setInterval(doTeleport, 2500);
@@ -119,11 +121,13 @@ export default function DemoArena({ type, onClose, onSwitch }) {
           const now = Date.now();
           setBombTrigger(now);
           setBombActive(true);
+          soundManager.playBombLaunch();
 
           let count = 5;
           const countInterval = setInterval(() => {
             count--;
             setBombCountdown(count);
+            if (count > 0) soundManager.playBombBeep();
             if (count <= 0) clearInterval(countInterval);
           }, 1000);
 
@@ -134,6 +138,7 @@ export default function DemoArena({ type, onClose, onSwitch }) {
             setBombCountdown(0);
             setWaveHits([{ col: 5, row: 5, time: Date.now() }]);
             setEnemyHp(0);
+            soundManager.playExplosion();
 
             setTimeout(() => {
               if (!active) return;
@@ -164,10 +169,12 @@ export default function DemoArena({ type, onClose, onSwitch }) {
           const now = Date.now();
           setSniperTrigger(now);
           setHitTiles([{ col: 5, row: 5, time: now }]);
+          soundManager.playSniperShot();
 
           setTimeout(() => {
             if (!active) return;
             setEnemyHp(0);
+            soundManager.playDamage();
 
             setTimeout(() => {
               if (!active) return;
@@ -210,11 +217,11 @@ export default function DemoArena({ type, onClose, onSwitch }) {
   return (
     <div className="demo-overlay" style={{
       position: 'absolute', top:0, left:0, right:0, bottom:0,
-      backgroundColor: `rgba(0,0,0,${1 - opacity})`,
+      backgroundColor: `rgba(3,6,10,${1 - opacity})`,
       transition: 'background-color 0.1s',
       zIndex: 1000, display: 'flex'
     }}>
-      <div style={{ padding: '20px', background: '#111', width: '320px', borderRight: '1px solid #333', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '20px', background: '#03060a', width: '320px', borderRight: '1px solid #1a2332', display: 'flex', flexDirection: 'column' }}>
         <h2 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '20px' }}>Demonstração</h2>
         
         <div style={{ color: '#00ffcc', fontWeight: 'bold' }}>Habilidade Ativa:</div>
@@ -224,7 +231,7 @@ export default function DemoArena({ type, onClose, onSwitch }) {
           {description}
         </p>
 
-        <div style={{ marginTop: '20px', background: '#000', padding: '15px', borderRadius: '4px', border: '1px solid #333' }}>
+        <div style={{ marginTop: '20px', background: '#050a12', padding: '15px', borderRadius: '4px', border: '1px solid #1a2332' }}>
           <pre style={{ color: '#00ddaa', margin: 0, fontSize: '0.9rem', fontFamily: 'monospace' }}>
             {dynamicCode}
           </pre>
@@ -232,7 +239,7 @@ export default function DemoArena({ type, onClose, onSwitch }) {
 
         <div style={{ flex: 1 }} />
 
-        <div style={{ borderTop: '1px solid #333', paddingTop: '20px' }}>
+        <div style={{ borderTop: '1px solid #1a2332', paddingTop: '20px' }}>
           <h3 style={{ color: '#fff', fontSize: '1rem', marginBottom: '10px' }}>Outras Demonstrações:</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {type !== 'teleport' && <button className="action-btn" onClick={() => onSwitch('teleport')}>Teletransporte</button>}
@@ -244,8 +251,8 @@ export default function DemoArena({ type, onClose, onSwitch }) {
         <button className="action-btn" onClick={onClose} style={{ marginTop: '20px', background: '#BC0001', color: 'white' }}>VOLTAR AO MENU</button>
       </div>
       
-      <div style={{ flex: 1, position: 'relative' }}>
-        <Canvas gl={{ antialias: false, depth: true }} onCreated={({ gl }) => gl.setClearColor('#000000')}>
+      <div style={{ flex: 1, position: 'relative', background: '#03060a' }}>
+        <Canvas gl={{ antialias: false, depth: true }} onCreated={({ gl }) => gl.setClearColor('#03060a')}>
           <OrthographicCamera makeDefault position={[10, 10, 10]} zoom={50} />
           <OrbitControls />
           <LightBootSequence />
