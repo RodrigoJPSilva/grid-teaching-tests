@@ -36,7 +36,7 @@ function RecursiveModel({ node, modelType, partsMap, outlineColor }) {
 }
 
 // ── Mini-bombas do Boss disparadas para o céu ─────────────
-function BossSkyBombs({ skyBombAttack, scaleMultiplier }) {
+function BossSkyBombs({ skyBombAttack, scaleMultiplier, speedMultiplier = 1 }) {
   const groupRef = useRef();
   const meshesRef = useRef([]);
   const soundsFired = useRef(new Set());
@@ -51,7 +51,12 @@ function BossSkyBombs({ skyBombAttack, scaleMultiplier }) {
     const count = skyBombAttack.bombsCount || 5;
 
     for (let i = 0; i < count; i++) {
-      const tStart = i * 0.2;
+      const effectiveSpeed = speedMultiplier || 1;
+      const stepInterval = 0.2 / effectiveSpeed;
+      const flyDuration = 0.5 / effectiveSpeed;
+      const peakOffset = 0.2 / effectiveSpeed;
+
+      const tStart = i * stepInterval;
       if (elapsed >= tStart && !soundsFired.current.has(i)) {
         soundsFired.current.add(i);
         soundManager.playBossBombLaunch(i);
@@ -59,17 +64,17 @@ function BossSkyBombs({ skyBombAttack, scaleMultiplier }) {
 
       const mesh = meshesRef.current[i];
       if (!mesh) continue;
-      const tPeak = tStart + 0.2;
+      const tPeak = tStart + peakOffset;
       const bElapsed = elapsed - tPeak;
 
-      if (bElapsed >= 0 && bElapsed <= 0.5) {
+      if (bElapsed >= 0 && bElapsed <= flyDuration) {
         mesh.visible = true;
-        const u = bElapsed / 0.5; // 0 to 1
+        const u = bElapsed / flyDuration; // 0 to 1
         const isRight = (i % 2 === 0);
         const handX = (isRight ? 0.38 : -0.38) * scaleMultiplier;
         const handZ = 0.35 * scaleMultiplier;
         const startY = 1.2 * scaleMultiplier;
-        // Sobe da mão em direção ao céu ao longo de 0.5s
+        // Sobe da mão em direção ao céu
         mesh.position.set(handX, startY + u * 6.5, handZ);
       } else {
         mesh.visible = false;
@@ -125,6 +130,7 @@ export default function RobotModel({
   bombAttack = null,
   isDead = false,
   isFloorElevated = false,
+  speedMultiplier = 1,
 }) {
   const groupRef = useRef();
   const internalModelRef = useRef();
@@ -383,23 +389,28 @@ export default function RobotModel({
       landSquashXZ = 1 + squash * 0.5;
     }
 
-    // 0.5. Lógica de Pulo Especial do Boss (5 segundos total)
-    const isJumping = !!(jumpState && jumpStartPos3D && jumpTargetPos3D && (Date.now() - jumpState.startTime < 5000));
+    // 0.5. Lógica de Pulo Especial do Boss (escalado dinamicamente com jumpState.duration)
+    const jumpTotalDuration = jumpState?.duration ? jumpState.duration / 1000 : 5.0;
+    const isJumping = !!(jumpState && jumpStartPos3D && jumpTargetPos3D && (Date.now() - jumpState.startTime < (jumpState.duration || 5000)));
     const jumpElapsed = isJumping ? (Date.now() - jumpState.startTime) / 1000 : 999;
     let effectiveLookAt = lookAtTarget;
 
     // 1. Posicionamento, Teleporte ou Pulo do Robô
     if (isJumping) {
       const sm = BASE_SCALE * scaleMultiplier;
-      if (jumpElapsed < 2.0) {
-        // 1. Olha para o piso alvo por 2 segundos
+      const phase1 = jumpTotalDuration * 0.40; // 40% mira no alvo (ex: 2.0s em 5s, 1.0s em 2.5s)
+      const phase2 = jumpTotalDuration * 0.50; // 10% squash (ex: 0.5s em 5s, 0.25s em 2.5s)
+      const phase3 = jumpTotalDuration; // 50% salto parabólico (ex: 2.5s em 5s, 1.25s em 2.5s)
+
+      if (jumpElapsed < phase1) {
+        // 1. Olha para o piso alvo
         effectiveLookAt = jumpTargetPos3D;
         groupRef.current.position.set(jumpStartPos3D[0], jumpStartPos3D[1], jumpStartPos3D[2]);
         internalModelRef.current.scale.set(sm, sm, sm);
-      } else if (jumpElapsed < 2.5) {
-        // 2. Fica amassado (squash) por 0.5 segundos antes de pular
+      } else if (jumpElapsed < phase2) {
+        // 2. Fica amassado (squash) de preparação
         effectiveLookAt = jumpTargetPos3D;
-        const squashP = (jumpElapsed - 2.0) / 0.5; // 0 to 1
+        const squashP = (jumpElapsed - phase1) / Math.max(0.01, phase2 - phase1); // 0 to 1
         const squashFactor = Math.sin(squashP * Math.PI * 0.5);
         const squashY = THREE.MathUtils.lerp(1.0, 0.48, squashFactor);
         const expandXZ = THREE.MathUtils.lerp(1.0, 1.28, squashFactor);
@@ -407,8 +418,8 @@ export default function RobotModel({
         const feetYOffset = -(1.0 - squashY) * 0.35 * scaleMultiplier;
         groupRef.current.position.set(jumpStartPos3D[0], jumpStartPos3D[1] + feetYOffset, jumpStartPos3D[2]);
       } else {
-        // 3. Salto parabólico no ar por 2.5 segundos (sem girar, mantém postura ereta)
-        const jumpP = (jumpElapsed - 2.5) / 2.5; // 0 to 1
+        // 3. Salto parabólico no ar por 50% da duração
+        const jumpP = Math.min((jumpElapsed - phase2) / Math.max(0.01, phase3 - phase2), 1.0); // 0 to 1
         const currX = THREE.MathUtils.lerp(jumpStartPos3D[0], jumpTargetPos3D[0], jumpP);
         const currZ = THREE.MathUtils.lerp(jumpStartPos3D[2], jumpTargetPos3D[2], jumpP);
         const PEAK_HEIGHT = 6.2;
@@ -520,7 +531,7 @@ export default function RobotModel({
       damageFlashing.current = false;
     }
 
-    // 0.4. Animação de Pouso Pós-Salto do Boss (1.5s - antiga animação da bomba reutilizada)
+    // 0.4. Animação de Pouso Pós-Salto do Boss (escalado dinamicamente com landingState.duration)
     const isLanding = !!(landingState && (Date.now() - landingState.startTime < (landingState.duration || 1500)));
     const landingElapsed = isLanding ? (Date.now() - landingState.startTime) / 1000 : 999;
     const landingDuration = (landingState?.duration || 1500) / 1000;
@@ -529,7 +540,7 @@ export default function RobotModel({
     if (isLanding) {
       const lp = landingElapsed / landingDuration; // 0 to 1
       if (lp < 0.75) {
-        landingCharge = Math.min(landingElapsed / 0.15, 1.0);
+        landingCharge = Math.min(landingElapsed / Math.max(0.05, landingDuration * 0.15), 1.0);
       } else {
         landingCharge = Math.max(0, 1.0 - (lp - 0.75) / 0.25);
       }
@@ -697,21 +708,26 @@ export default function RobotModel({
         leftHandYOffset += 0.5 * landingCharge;
       }
 
-      // Nova Animação do Boss: Sobe uma mão de cada vez (0.2s), atirando bombas pro céu (0.5s)
+      // Nova Animação do Boss: Sobe uma mão de cada vez, atirando bombas pro céu
       if (isSkyBombing) {
         const count = skyBombAttack?.bombsCount || 5;
+        const animSpeed = (modelType === 'boss' || modelType === 'npc') ? (speedMultiplier || 1) : 1;
+        const stepInterval = 0.2 / animSpeed;
+        const peakTime = 0.2 / animSpeed;
+        const dropTime = 0.5 / animSpeed;
+
         for (let i = 0; i < count; i++) {
-          const tStart = i * 0.2;
-          const tPeak = tStart + 0.2;
-          const tEnd = tPeak + 0.5;
+          const tStart = i * stepInterval;
+          const tPeak = tStart + peakTime;
+          const tEnd = tPeak + dropTime;
 
           if (skyBombElapsed >= tStart && skyBombElapsed < tEnd) {
             let armProgress = 0;
             if (skyBombElapsed < tPeak) {
-              const p = (skyBombElapsed - tStart) / 0.2;
+              const p = (skyBombElapsed - tStart) / peakTime;
               armProgress = Math.sin(p * Math.PI * 0.5);
             } else {
-              const p = (skyBombElapsed - tPeak) / 0.5;
+              const p = (skyBombElapsed - tPeak) / dropTime;
               armProgress = 1.0 - p;
             }
 
@@ -730,22 +746,27 @@ export default function RobotModel({
       }
 
       // Nova Animação de Lançamento de Bombas Oblíquas (Jogador e NPC):
-      // Sobe uma mão de cada vez em 0.2s, arremessa no ápice e retorna a mão em 0.5s.
+      // Sobe uma mão de cada vez, arremessa no ápice e retorna a mão.
       // Se for mais de uma bomba, alterna as mãos (direita para índice par, esquerda para índice ímpar).
       if (isObliqueBombing) {
         const count = activeBomb?.bombsCount || 1;
+        const animSpeed = (modelType === 'boss' || modelType === 'npc') ? (speedMultiplier || 1) : 1;
+        const stepInterval = 0.4 / animSpeed;
+        const peakTime = 0.2 / animSpeed;
+        const dropTime = 0.5 / animSpeed;
+
         for (let i = 0; i < count; i++) {
-          const tStart = i * 0.4;
-          const tPeak = tStart + 0.2;
-          const tEnd = tPeak + 0.5;
+          const tStart = i * stepInterval;
+          const tPeak = tStart + peakTime;
+          const tEnd = tPeak + dropTime;
 
           if (obliqueBombElapsed >= tStart && obliqueBombElapsed < tEnd) {
             let armProgress = 0;
             if (obliqueBombElapsed < tPeak) {
-              const p = (obliqueBombElapsed - tStart) / 0.2;
+              const p = (obliqueBombElapsed - tStart) / peakTime;
               armProgress = Math.sin(p * Math.PI * 0.5);
             } else {
-              const p = (obliqueBombElapsed - tPeak) / 0.5;
+              const p = (obliqueBombElapsed - tPeak) / dropTime;
               armProgress = 1.0 - p;
             }
 
@@ -909,7 +930,7 @@ export default function RobotModel({
       </group>
 
       {/* Mini-bombas atiradas para o céu pelo Boss */}
-      <BossSkyBombs skyBombAttack={skyBombAttack} scaleMultiplier={scaleMultiplier} />
+      <BossSkyBombs skyBombAttack={skyBombAttack} scaleMultiplier={scaleMultiplier} speedMultiplier={speedMultiplier} />
     </group>
   );
 }

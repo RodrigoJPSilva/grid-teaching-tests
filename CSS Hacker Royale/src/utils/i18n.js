@@ -112,6 +112,11 @@ export const TRANSLATIONS = {
     nextBtn: 'AVANÇAR',
     continueBtn: 'CONTINUAR',
     finishBtn: 'CONCLUIR',
+
+    // Mobile Orientation
+    rotateTitle: 'GIRE SEU DISPOSITIVO',
+    rotateDesc: 'Por favor, gire seu celular para a horizontal (paisagem) para jogar.',
+    rotateHint: 'O sistema tático foi calibrado exclusivamente para telas panorâmicas.',
   },
 
   en: {
@@ -205,6 +210,11 @@ export const TRANSLATIONS = {
     nextBtn: 'NEXT',
     continueBtn: 'CONTINUE',
     finishBtn: 'COMPLETE',
+
+    // Mobile Orientation
+    rotateTitle: 'ROTATE YOUR DEVICE',
+    rotateDesc: 'Please rotate your phone to landscape mode to play.',
+    rotateHint: 'Tactical system is calibrated exclusively for widescreen view.',
   },
 
   es: {
@@ -298,6 +308,11 @@ export const TRANSLATIONS = {
     nextBtn: 'SIGUIENTE',
     continueBtn: 'CONTINUAR',
     finishBtn: 'FINALIZAR',
+
+    // Mobile Orientation
+    rotateTitle: 'GIRA TU DISPOSITIVO',
+    rotateDesc: 'Por favor, gira tu teléfono al modo horizontal (paisaje) para jugar.',
+    rotateHint: 'El sistema táctico está calibrado exclusivamente para pantalla panorámica.',
   }
 };
 

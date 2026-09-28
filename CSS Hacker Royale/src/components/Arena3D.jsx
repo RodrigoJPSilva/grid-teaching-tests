@@ -206,6 +206,7 @@ export default function Arena3D({
   highlightTiles = [],
   selectedTile = null,
   activePlayerBomb = null,
+  speedMultiplier = 1,
 }) {
   const [playerDamageTrigger, setPlayerDamageTrigger] = useState(0);
   const prevPlayerHp = useRef(playerHp);
@@ -617,10 +618,11 @@ export default function Arena3D({
             isAwaitingSpawn={
               enemy.type === 'boss'
                 ? (!bossIntroPhase || bossIntroPhase === 'waiting_player' || bossIntroPhase === 'perigo_warning' || bossIntroPhase === 'zoom_in' || (enemy.spawnTime === 0 || now < enemy.spawnTime))
-                : (enemy.spawnTime === 0 || now < enemy.spawnTime)
+                : (enemy.spawnTime > 0 ? now < enemy.spawnTime : false)
             }
             scaleOverride={enemy.type === 'boss' ? bossScale : null}
             isFloorElevated={getIsTileElevated(enemy.position[1], enemy.position[0])}
+            speedMultiplier={speedMultiplier}
           />
         ))}
       </group>

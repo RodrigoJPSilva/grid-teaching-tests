@@ -1511,5 +1511,54 @@ kbd {
   box-shadow: 0 0 20px rgba(0, 240, 255, 0.7);
 }
 
+/* ── Otimizações para Mobile Horizontal (Landscape) ── */
+@media (max-height: 600px) and (orientation: landscape) {
+  html, body, #root, .itb-menu-root, .app-root {
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+
+  .itb-menu-sidebar {
+    padding: 18px 24px;
+    width: 360px;
+    justify-content: center;
+    gap: 12px;
+  }
+
+  .itb-hero-title {
+    font-size: 1.35rem;
+    margin-bottom: 2px;
+  }
+
+  .itb-hero-tagline {
+    font-size: 0.65rem;
+    margin-bottom: 8px;
+  }
+
+  .itb-menu-btn {
+    padding: 10px 14px;
+    font-size: 0.8rem;
+  }
+
+  .itb-difficulty-card {
+    padding: 8px 12px;
+    margin-bottom: 6px;
+  }
+
+  .itb-diff-title {
+    font-size: 0.85rem;
+  }
+
+  .itb-diff-desc {
+    font-size: 0.68rem;
+  }
+
+  .camera-mode-selector .camera-btn {
+    height: 28px;
+    font-size: 0.72rem;
+    padding: 0 8px;
+  }
+}
+
 
 

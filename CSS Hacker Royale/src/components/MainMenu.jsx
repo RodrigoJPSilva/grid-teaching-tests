@@ -22,10 +22,11 @@ export default function MainMenu({
   setInputMode,
   gridSize = 10,
   setGridSize,
+  isMobile = false,
 }) {
   const [activeSubmenu, setActiveSubmenu] = useState(null); // null | 'difficulty' | 'options' | 'demos'
   const [activeDemo, setActiveDemo] = useState(null);
-  const [selectedControlMode, setSelectedControlMode] = useState(inputMode || 'radial');
+  const [selectedControlMode, setSelectedControlMode] = useState(isMobile ? 'radial' : (inputMode || 'radial'));
 
   useEffect(() => {
     soundManager.startMenuMusic();
@@ -43,7 +44,7 @@ export default function MainMenu({
   }
 
   const handleStartGame = (difficulty) => {
-    onStart(difficulty, gridSize, selectedControlMode);
+    onStart(difficulty, gridSize, isMobile ? 'radial' : selectedControlMode);
   };
 
   const handleSelectDemo = (type) => {
@@ -136,43 +137,45 @@ export default function MainMenu({
                 <span className="itb-panel-tag">{t('combatMode', language)}</span>
               </div>
 
-              {/* Seletor de Modo de Controle: Menu Radial vs Editor de Código */}
-              <div className="itb-control-mode-block">
-                <span className="itb-control-mode-title">{t('controlMode', language)}</span>
-                <div className="itb-control-mode-pill-group">
-                  <button
-                    type="button"
-                    className={`itb-mode-pill-btn ${selectedControlMode === 'radial' ? 'active' : ''}`}
-                    onClick={() => {
-                      soundManager.playUIClick();
-                      setSelectedControlMode('radial');
-                      if (setInputMode) setInputMode('radial');
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="12" y1="2" x2="12" y2="22" />
-                      <line x1="2" y1="12" x2="22" y2="12" />
-                    </svg>
-                    {t('modeRadial', language)}
-                  </button>
-                  <button
-                    type="button"
-                    className={`itb-mode-pill-btn ${selectedControlMode === 'code' ? 'active' : ''}`}
-                    onClick={() => {
-                      soundManager.playUIClick();
-                      setSelectedControlMode('code');
-                      if (setInputMode) setInputMode('code');
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
-                      <polyline points="16 18 22 12 16 6" />
-                      <polyline points="8 6 2 12 8 18" />
-                    </svg>
-                    {t('modeCode', language)}
-                  </button>
+              {/* Seletor de Modo de Controle: Menu Radial vs Editor de Código (Oculto no Mobile) */}
+              {!isMobile && (
+                <div className="itb-control-mode-block">
+                  <span className="itb-control-mode-title">{t('controlMode', language)}</span>
+                  <div className="itb-control-mode-pill-group">
+                    <button
+                      type="button"
+                      className={`itb-mode-pill-btn ${selectedControlMode === 'radial' ? 'active' : ''}`}
+                      onClick={() => {
+                        soundManager.playUIClick();
+                        setSelectedControlMode('radial');
+                        if (setInputMode) setInputMode('radial');
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="2" x2="12" y2="22" />
+                        <line x1="2" y1="12" x2="22" y2="12" />
+                      </svg>
+                      {t('modeRadial', language)}
+                    </button>
+                    <button
+                      type="button"
+                      className={`itb-mode-pill-btn ${selectedControlMode === 'code' ? 'active' : ''}`}
+                      onClick={() => {
+                        soundManager.playUIClick();
+                        setSelectedControlMode('code');
+                        if (setInputMode) setInputMode('code');
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}>
+                        <polyline points="16 18 22 12 16 6" />
+                        <polyline points="8 6 2 12 8 18" />
+                      </svg>
+                      {t('modeCode', language)}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="itb-difficulty-list">
                 <button

@@ -12,6 +12,7 @@ import DemoArena from './components/DemoArena';
 import LoadingScreen from './components/LoadingScreen';
 import DialogueBox from './components/DialogueBox';
 import RadialMenu from './components/RadialMenu';
+import RotateDeviceOverlay from './components/RotateDeviceOverlay';
 import { detectUserLanguage, t } from './utils/i18n';
 import { soundManager } from './utils/SoundManager';
 import './App.css';
@@ -31,9 +32,45 @@ const EMPTY_CSS = `.player {
 // ── Componente Principal ────────────────────────────────────
 export default function App() {
   const [language, setLanguage] = useState(detectUserLanguage);
-  const [inputMode, setInputMode] = useState('radial'); // 'radial' | 'code'
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return Boolean(
+      ('ontouchstart' in window) ||
+      (navigator.maxTouchPoints > 0) ||
+      (window.matchMedia && window.matchMedia('(pointer: coarse)').matches)
+    );
+  });
+  const [inputMode, setInputMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const touch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+      if (touch) return 'radial';
+    }
+    return 'radial';
+  }); // 'radial' | 'code'
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [gridSize, setGridSize] = useState(10);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      const touch = Boolean(
+        ('ontouchstart' in window) ||
+        (navigator.maxTouchPoints > 0) ||
+        (window.matchMedia && window.matchMedia('(pointer: coarse)').matches)
+      );
+      setIsMobile(touch);
+      if (touch) {
+        setInputMode('radial');
+        setIsEditorVisible(false);
+      }
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    window.addEventListener('orientationchange', checkMobile);
+    return () => {
+      window.removeEventListener('resize', checkMobile);
+      window.removeEventListener('orientationchange', checkMobile);
+    };
+  }, []);
 
   const [cssCode, setCssCode] = useState(EMPTY_CSS);
   const [committedCssCode, setCommittedCssCode] = useState(EMPTY_CSS);
@@ -105,7 +142,7 @@ export default function App() {
   }, [gameState]);
 
   const handleStartGame = (difficulty, size, controlMode = 'radial') => {
-    const finalMode = controlMode || inputMode || 'radial';
+    const finalMode = isMobile ? 'radial' : (controlMode || inputMode || 'radial');
     setInputMode(finalMode);
     setLoadingState({
       active: true,
@@ -480,6 +517,7 @@ export default function App() {
           setInputMode={setInputMode}
           gridSize={gridSize}
           setGridSize={setGridSize}
+          isMobile={isMobile}
         />
       ) : (
         <div className="app-root">
@@ -688,14 +726,16 @@ export default function App() {
                     {t('cameraFree', language)}
                   </button>
                 </div>
-                <button
-                  type="button"
-                  className="camera-btn"
-                  onClick={() => setIsEditorVisible(true)}
-                  style={{ width: 'auto', padding: '0 12px', height: '32px' }}
-                >
-                  {'</> ' + t('showEditorBtn', language)}
-                </button>
+                {!isMobile && (
+                  <button
+                    type="button"
+                    className="camera-btn"
+                    onClick={() => setIsEditorVisible(true)}
+                    style={{ width: 'auto', padding: '0 12px', height: '32px' }}
+                  >
+                    {'</> ' + t('showEditorBtn', language)}
+                  </button>
+                )}
               </div>
             )}
             <Arena3D
@@ -724,6 +764,7 @@ export default function App() {
               currentLevel={gameState.currentLevel}
               highlightTiles={tutorialHighlightTiles}
               activePlayerBomb={activePlayerBomb}
+              speedMultiplier={inputMode === 'radial' ? 2 : 1}
             />
 
             {/* ── BLOCO DE CONVERSA DO PERSONAGEM (Substituindo a TV) ── */}
@@ -778,35 +819,37 @@ export default function App() {
             />
           )}
 
-          {/* Folha de Dicas (Cheatsheet) */}
-          <div
-            className="cheatsheet-container"
-            onMouseEnter={() => setCheatsheetHovered(true)}
-            onMouseLeave={() => setCheatsheetHovered(false)}
-          >
-            <div className="cheatsheet-arrow">◀</div>
-            <div className="cheatsheet-content">
-              <h2>{t('hackerGuide', language)}</h2>
-              <p>{t('toMoveUse', language)}</p>
-              <p><strong>.player</strong> &#123;</p>
-              <p>&nbsp;&nbsp;grid-column: X;</p>
-              <p>&nbsp;&nbsp;grid-row: Y;</p>
-              <p>&#125;</p>
-              <div className="cheatsheet-spacer" />
-              <p>{t('bombInfo', language)}</p>
-              <p>{t('sniperInfo', language)}</p>
-              <div className="cheatsheet-spacer" />
-              <div className="cheatsheet-spacer" />
-              <p className="cheatsheet-tip">
-                {t('secretTip', language)}
-              </p>
-              {clickedTile && (
-                <p className="cheatsheet-clicked">
-                  {t('clickedTile', language)} [grid-column: {clickedTile.col}; grid-row: {clickedTile.row}]
+          {/* Folha de Dicas (Cheatsheet) - Oculta no Mobile */}
+          {!isMobile && (
+            <div
+              className="cheatsheet-container"
+              onMouseEnter={() => setCheatsheetHovered(true)}
+              onMouseLeave={() => setCheatsheetHovered(false)}
+            >
+              <div className="cheatsheet-arrow">◀</div>
+              <div className="cheatsheet-content">
+                <h2>{t('hackerGuide', language)}</h2>
+                <p>{t('toMoveUse', language)}</p>
+                <p><strong>.player</strong> &#123;</p>
+                <p>&nbsp;&nbsp;grid-column: X;</p>
+                <p>&nbsp;&nbsp;grid-row: Y;</p>
+                <p>&#125;</p>
+                <div className="cheatsheet-spacer" />
+                <p>{t('bombInfo', language)}</p>
+                <p>{t('sniperInfo', language)}</p>
+                <div className="cheatsheet-spacer" />
+                <div className="cheatsheet-spacer" />
+                <p className="cheatsheet-tip">
+                  {t('secretTip', language)}
                 </p>
-              )}
+                {clickedTile && (
+                  <p className="cheatsheet-clicked">
+                    {t('clickedTile', language)} [grid-column: {clickedTile.col}; grid-row: {clickedTile.row}]
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
         </div>
       )}
@@ -821,6 +864,9 @@ export default function App() {
           minDuration={loadingState.minDuration || 1500}
         />
       )}
+
+      {/* Overlay de Rotação para Mobile Horizontal Obrigatório */}
+      <RotateDeviceOverlay language={language} />
     </>
   );
 }

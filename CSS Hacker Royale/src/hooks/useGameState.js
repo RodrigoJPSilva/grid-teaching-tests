@@ -161,7 +161,7 @@ export function useGameState(inputMode = 'radial') {
         lastTeleTime: Date.now(),
         lastDamageTime: 0,
         bombsToFire: wave.bombs,
-        spawnTime: (level === 1 || wave.type === 'boss') ? 0 : Date.now(),
+        spawnTime: wave.type === 'boss' ? 0 : Date.now(),
         isIntroActive: wave.type === 'boss',
       };
     }
@@ -355,10 +355,10 @@ export function useGameState(inputMode = 'radial') {
   const completeTutorialAndStartGame = useCallback(() => {
     setIsTutorialActive(false);
     setEnemies({});
-    // Pausa de 4 segundos de preparação antes dos primeiros ataques da Fase 1
+    // Pausa de 2 segundos de preparação antes do robô da Fase 1 descer
     setTimeout(() => {
       spawnWave('Facil', 1, arenaSize);
-    }, 4000);
+    }, 2000);
   }, [spawnWave, arenaSize]);
 
   useEffect(() => {
