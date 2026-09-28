@@ -1,0 +1,182 @@
+/* ============================================================
+   RadialMenu.module.css — Menu Radial Circular (Imagem 2)
+   Estilo Donut Pie Menu com desfoque e linhas vetoriais limpas
+   ============================================================ */
+
+.radialBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  background: rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(1.5px);
+  user-select: none;
+}
+
+.radialContainer {
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  animation: radialPop 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@keyframes radialPop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.65);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.radialSvg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 4px 18px rgba(0, 0, 0, 0.65));
+  overflow: visible;
+}
+
+/* Anel de fundo externo */
+.outerRingGlow {
+  fill: rgba(8, 20, 42, 0.82);
+  stroke: rgba(0, 240, 255, 0.35);
+  stroke-width: 1.5;
+}
+
+.innerRingBorder {
+  fill: none;
+  stroke: rgba(0, 240, 255, 0.45);
+  stroke-width: 1.5;
+}
+
+/* ── Setores / Fatias do Donut ───────────────────────────────── */
+.sectorGroup {
+  cursor: pointer;
+  transition: all 0.16s ease-out;
+}
+
+.sectorPath {
+  fill: rgba(12, 28, 56, 0.88);
+  stroke: rgba(0, 240, 255, 0.4);
+  stroke-width: 1.2;
+  transition: fill 0.16s ease, stroke 0.16s ease, filter 0.16s ease;
+}
+
+.sectorLabel {
+  font-family: 'Share Tech Mono', 'Orbitron', monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  fill: #e6edf3;
+  pointer-events: none;
+  transition: fill 0.16s ease;
+}
+
+.sectorIconGroup {
+  color: #ffffff;
+  pointer-events: none;
+  transition: transform 0.16s ease, color 0.16s ease;
+}
+
+/* Hover nos Setores */
+.sectorGroup:hover .sectorPath {
+  fill: rgba(0, 80, 140, 0.95);
+  stroke: #00f0ff;
+  stroke-width: 2;
+  filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.7));
+}
+
+.sectorGroup:hover .sectorLabel {
+  fill: #ffffff;
+  font-weight: 900;
+}
+
+.sectorGroup:hover .sectorIconGroup {
+  transform-origin: center;
+  color: #00f0ff;
+}
+
+/* Cores de acento por setor */
+.sectorTeleport:hover .sectorPath {
+  fill: rgba(0, 70, 60, 0.95);
+  stroke: #00ff88;
+}
+.sectorTeleport:hover .sectorIconGroup,
+.sectorTeleport:hover .sectorLabel {
+  color: #00ff88;
+  fill: #00ff88;
+}
+
+.sectorBomb:hover .sectorPath {
+  fill: rgba(80, 40, 0, 0.95);
+  stroke: #ffaa00;
+}
+.sectorBomb:hover .sectorIconGroup,
+.sectorBomb:hover .sectorLabel {
+  color: #ffaa00;
+  fill: #ffaa00;
+}
+
+.sectorSniper:hover .sectorPath {
+  fill: rgba(80, 10, 30, 0.95);
+  stroke: #ff0044;
+}
+.sectorSniper:hover .sectorIconGroup,
+.sectorSniper:hover .sectorLabel {
+  color: #ff0044;
+  fill: #ff0044;
+}
+
+/* ── Botão Central com 'X' (Imagem 2) ───────────────────────── */
+.centerCloseBtn {
+  position: absolute;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #0e1e35 0%, #060d18 100%);
+  border: 1.8px solid #00f0ff;
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.45);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.18s ease;
+  padding: 0;
+  outline: none;
+}
+
+.centerCloseBtn:hover {
+  background: #ff0044;
+  border-color: #ff5577;
+  box-shadow: 0 0 20px rgba(255, 0, 68, 0.85);
+  transform: scale(1.08);
+}
+
+.coordHeader {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: bold;
+  color: #00f0ff;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.closeIcon {
+  font-size: 0.95rem;
+  font-weight: 900;
+  color: #ffffff;
+  line-height: 1;
+}
+
+.centerCloseBtn:hover .coordHeader,
+.centerCloseBtn:hover .closeIcon {
+  color: #ffffff;
+}

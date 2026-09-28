@@ -7,6 +7,7 @@ import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react'
 import { useFrame } from '@react-three/fiber';
 import { useGLTF, Outlines } from '@react-three/drei';
 import * as THREE from 'three';
+import { soundManager } from '../utils/SoundManager';
 
 const BASE_SCALE = 0.055;
 const TELEPORT_SPEED = 4;
@@ -38,6 +39,11 @@ function RecursiveModel({ node, modelType, partsMap, outlineColor }) {
 function BossSkyBombs({ skyBombAttack, scaleMultiplier }) {
   const groupRef = useRef();
   const meshesRef = useRef([]);
+  const soundsFired = useRef(new Set());
+
+  useEffect(() => {
+    soundsFired.current.clear();
+  }, [skyBombAttack?.startTime]);
 
   useFrame(() => {
     if (!skyBombAttack || !groupRef.current) return;
@@ -45,9 +51,15 @@ function BossSkyBombs({ skyBombAttack, scaleMultiplier }) {
     const count = skyBombAttack.bombsCount || 5;
 
     for (let i = 0; i < count; i++) {
+      const tStart = i * 0.2;
+      if (elapsed >= tStart && !soundsFired.current.has(i)) {
+        soundsFired.current.add(i);
+        soundManager.playBossBombLaunch(i);
+      }
+
       const mesh = meshesRef.current[i];
       if (!mesh) continue;
-      const tPeak = i * 0.2 + 0.2;
+      const tPeak = tStart + 0.2;
       const bElapsed = elapsed - tPeak;
 
       if (bElapsed >= 0 && bElapsed <= 0.5) {
@@ -111,6 +123,8 @@ export default function RobotModel({
   landingState = null,
   skyBombAttack = null,
   bombAttack = null,
+  isDead = false,
+  isFloorElevated = false,
 }) {
   const groupRef = useRef();
   const internalModelRef = useRef();
@@ -120,6 +134,16 @@ export default function RobotModel({
   const landedTriggered = useRef(false);
   const landingStartTime = useRef(0);
   const whiteColorRef = useMemo(() => new THREE.Color('#ffffff'), []);
+
+  const deathStartTime = useRef(-999);
+  const wasDeadRef = useRef(false);
+
+  useEffect(() => {
+    if (isDead && !wasDeadRef.current) {
+      wasDeadRef.current = true;
+      deathStartTime.current = performance.now() / 1000;
+    }
+  }, [isDead]);
 
   const modelPath = modelType === 'player' ? '/models/RoboAzulModel.glb' : '/models/RoboNPCModel.glb';
   const { scene } = useGLTF(modelPath);
@@ -432,22 +456,42 @@ export default function RobotModel({
         }
       });
       // Posição com deslocamento de descida celestial
-      groupRef.current.position.set(targetPos.x, targetPos.y + skyYOffset, targetPos.z);
+      const floorBaseY = isDead ? (isFloorElevated ? 0.21 : 0.01) : targetPos.y;
+      groupRef.current.position.set(targetPos.x, floorBaseY + skyYOffset, targetPos.z);
       const sm = BASE_SCALE * scaleMultiplier;
       internalModelRef.current.scale.set(sm * landSquashXZ, sm * landSquashY, sm * landSquashXZ);
     }
 
-    // 2. Cálculo do Efeito de Dano (Recoil em metade do tempo + Piscar Vermelho/Branco por 2s)
+    // 2. Cálculo do Efeito de Dano (Recoil) ou Animação de Morte
+    const isDying = isDead;
+    const deathElapsed = isDying ? Math.max(0, nowSec - deathStartTime.current) : 0;
+    const fallProgress = isDying ? Math.min(deathElapsed / 1.3, 1.0) : 0;
+    const easeFall = isDying ? (1 - Math.pow(1 - fallProgress, 3)) : 0;
+
     const damageElapsed = nowSec - damageStartTime.current;
-    const isDamagedActive = damageElapsed < 2.0;
+    const isDamagedActive = !isDying && damageElapsed < 2.0;
 
     // Recoil com metade do tempo (~0.8s para inclinar para trás e voltar à postura)
     const damageRecoilProgress = Math.min(damageElapsed / 0.8, 1);
     const recoilFactor = damageElapsed < 0.8 ? Math.sin(damageRecoilProgress * Math.PI) : 0;
     const damageRotX = -recoilFactor * (Math.PI / 4); // Rotação X para trás junto com o tronco
 
-    // Piscar em vermelho e branco por 2 segundos
-    if (isDamagedActive) {
+    if (isDying) {
+      // Animação de Morte: Ao invés de piscar em vermelho, só pisca branco lento
+      const slowPulse = (Math.sin(deathElapsed * 4.0) + 1) / 2;
+      const intensity = THREE.MathUtils.lerp(0.15, 0.9, slowPulse) * (1 - fallProgress * 0.4);
+      Object.values(parts).forEach(mesh => {
+        if (mesh && mesh.material) {
+          if (mesh.material.color) mesh.material.color.set('#ffffff');
+          if (mesh.material.emissive) {
+            mesh.material.emissive.set('#ffffff');
+            mesh.material.emissiveIntensity = intensity;
+          }
+        }
+      });
+      if (currentOutlineColor !== '#ffffff') setCurrentOutlineColor('#ffffff');
+    } else if (isDamagedActive) {
+      // Piscar em vermelho e branco por 2 segundos durante dano
       const isWhite = Math.floor(damageElapsed * 10) % 2 === 0;
       const flashColor = isWhite ? '#ffffff' : '#ff0022';
       Object.values(parts).forEach(mesh => {
@@ -511,7 +555,7 @@ export default function RobotModel({
 
     // 0.7. Nova Animação de Disparo Oblíquo de Bombas para Jogador e NPCs (Alternando Mãos)
     const activeBomb = bombAttack || (throwTrigger > 0 && (Date.now() - throwTrigger < 1200) ? { startTime: throwTrigger, bombsCount: 1, duration: 700 } : null);
-    const isObliqueBombing = !!(activeBomb && (Date.now() - activeBomb.startTime < (activeBomb.duration || 700) + 200));
+    const isObliqueBombing = !isDying && !!(activeBomb && (Date.now() - activeBomb.startTime < (activeBomb.duration || 700) + 200));
     const obliqueBombElapsed = isObliqueBombing ? (Date.now() - activeBomb.startTime) / 1000 : 999;
     const obliqueDur = ((activeBomb?.duration || 700)) / 1000;
 
@@ -527,7 +571,7 @@ export default function RobotModel({
       }
     }
 
-    // 3. Animação Idle (Olhar ao redor aleatório de 4 a 20s no eixo Z) e Mira
+    // 3. Animação Idle e Mira
     let targetHeadRotZ = 0;
     
     if (effectiveLookAt && Array.isArray(effectiveLookAt)) {
@@ -535,7 +579,7 @@ export default function RobotModel({
       const dx = effectiveLookAt[0] - currentPos.x;
       const dz = effectiveLookAt[2] - currentPos.z;
       targetHeadRotZ = Math.atan2(dx, dz);
-    } else {
+    } else if (!isDying) {
       lookTimer.current += delta;
       if (!isLooking.current) {
         if (lookTimer.current >= nextLookDelay.current) {
@@ -563,24 +607,57 @@ export default function RobotModel({
        const baseRotY = parts.head.userData.origRot?.y || 0;
        const baseRotZ = parts.head.userData.origRot?.z || 0;
 
-       // Rotação Z: Idle e mira horizontal (giro de coruja no pescoço)
-       parts.head.rotation.z = THREE.MathUtils.lerp(parts.head.rotation.z, baseRotZ + targetHeadRotZ, delta * 15);
-       // Rotação Y: Mantém neutro
-       parts.head.rotation.y = THREE.MathUtils.lerp(parts.head.rotation.y, baseRotY, delta * 15);
-       // Rotação X: Inclina para frente no pouso, para cima nas bombas celestiais/oblíquas, e para trás no dano
-       const finalHeadRotX = baseRotX + bossLandingRotX + skyHeadRotX + obliqueHeadRotX + damageRotX;
-       parts.head.rotation.x = THREE.MathUtils.lerp(parts.head.rotation.x, finalHeadRotX, delta * 15);
+       if (isDying) {
+         // A cabeça faz um rotation X para a direita em 90 graus e um rotation Y para trás em 90 graus, e reduz o position até encostar no chão
+         const targetRotX = baseRotX + easeFall * (Math.PI / 2);
+         const targetRotY = baseRotY - easeFall * (Math.PI / 2);
 
-       parts.head.position.z = parts.head.userData.origPos.z + (isDamagedActive ? 0 : Math.sin(t * 2) * 0.1);
+         parts.head.rotation.x = THREE.MathUtils.lerp(parts.head.rotation.x, targetRotX, delta * 10);
+         parts.head.rotation.y = THREE.MathUtils.lerp(parts.head.rotation.y, targetRotY, delta * 10);
+         parts.head.rotation.z = THREE.MathUtils.lerp(parts.head.rotation.z, baseRotZ, delta * 10);
+
+         // Reduz o position até encostar no chão
+         const dropZ = easeFall * 6.5;
+         const dropY = easeFall * 2.2;
+         parts.head.position.z = parts.head.userData.origPos.z - dropZ;
+         parts.head.position.y = parts.head.userData.origPos.y - dropY;
+       } else {
+         // Rotação Z: Idle e mira horizontal (giro de coruja no pescoço)
+         parts.head.rotation.z = THREE.MathUtils.lerp(parts.head.rotation.z, baseRotZ + targetHeadRotZ, delta * 15);
+         // Rotação Y: Mantém neutro
+         parts.head.rotation.y = THREE.MathUtils.lerp(parts.head.rotation.y, baseRotY, delta * 15);
+         // Rotação X: Inclina para frente no pouso, para cima nas bombas celestiais/oblíquas, e para trás no dano
+         const finalHeadRotX = baseRotX + bossLandingRotX + skyHeadRotX + obliqueHeadRotX + damageRotX;
+         parts.head.rotation.x = THREE.MathUtils.lerp(parts.head.rotation.x, finalHeadRotX, delta * 15);
+
+         parts.head.position.z = parts.head.userData.origPos.z + (isDamagedActive ? 0 : Math.sin(t * 2) * 0.1);
+       }
     }
 
     if (parts.torso) {
       const baseTorsoRotX = parts.torso.userData.origRot?.x || 0;
-      parts.torso.rotation.x = THREE.MathUtils.lerp(parts.torso.rotation.x, baseTorsoRotX + damageRotX, delta * 15);
-      parts.torso.position.z = parts.torso.userData.origPos.z + (isDamagedActive ? 0 : Math.sin(t * 2 + 0.2) * 0.05);
+      const baseTorsoRotY = parts.torso.userData.origRot?.y || 0;
+      const baseTorsoRotZ = parts.torso.userData.origRot?.z || 0;
+
+      if (isDying) {
+        // O corpo cai em rotation Y para frente em 90 graus, e reduz o position até encostar no piso
+        const targetTorsoRotY = baseTorsoRotY + easeFall * (Math.PI / 2);
+        const dropZ = easeFall * 4.6;
+        const dropY = easeFall * 1.5;
+
+        parts.torso.rotation.y = THREE.MathUtils.lerp(parts.torso.rotation.y, targetTorsoRotY, delta * 10);
+        parts.torso.rotation.x = THREE.MathUtils.lerp(parts.torso.rotation.x, baseTorsoRotX, delta * 10);
+        parts.torso.rotation.z = THREE.MathUtils.lerp(parts.torso.rotation.z, baseTorsoRotZ, delta * 10);
+
+        parts.torso.position.z = parts.torso.userData.origPos.z - dropZ;
+        parts.torso.position.y = parts.torso.userData.origPos.y - dropY;
+      } else {
+        parts.torso.rotation.x = THREE.MathUtils.lerp(parts.torso.rotation.x, baseTorsoRotX + damageRotX, delta * 15);
+        parts.torso.position.z = parts.torso.userData.origPos.z + (isDamagedActive ? 0 : Math.sin(t * 2 + 0.2) * 0.05);
+      }
     }
 
-    // 4. Ações (Mãos - paradas durante dano)
+    // 4. Ações (Mãos)
     let rightHandZOffset = 0;
     let rightHandYOffset = 0;
     let rightHandRotX = parts.rightHand?.userData.origRot.x || 0;
@@ -588,7 +665,25 @@ export default function RobotModel({
     let leftHandZOffset = 0;
     let leftHandYOffset = 0;
 
-    if (!isDamagedActive) {
+    if (isDying) {
+      const handDropZ = easeFall * 4.8;
+      const handDropY = easeFall * 1.5;
+      if (parts.rightHand) {
+        parts.rightHand.position.z = parts.rightHand.userData.origPos.z - handDropZ;
+        parts.rightHand.position.y = parts.rightHand.userData.origPos.y - handDropY;
+        parts.rightHand.rotation.y = THREE.MathUtils.lerp(parts.rightHand.rotation.y, -easeFall * (Math.PI / 2), delta * 10);
+        parts.rightHand.rotation.x = THREE.MathUtils.lerp(parts.rightHand.rotation.x, 0, delta * 10);
+        parts.rightHand.rotation.z = THREE.MathUtils.lerp(parts.rightHand.rotation.z, 0, delta * 10);
+      }
+      if (parts.leftHand) {
+        parts.leftHand.position.z = parts.leftHand.userData.origPos.z - handDropZ;
+        parts.leftHand.position.y = parts.leftHand.userData.origPos.y - handDropY;
+        parts.leftHand.rotation.y = THREE.MathUtils.lerp(parts.leftHand.rotation.y, easeFall * (Math.PI / 2), delta * 10);
+        parts.leftHand.rotation.x = THREE.MathUtils.lerp(parts.leftHand.rotation.x, easeFall * (Math.PI / 4), delta * 10);
+        parts.leftHand.rotation.z = THREE.MathUtils.lerp(parts.leftHand.rotation.z, 0, delta * 10);
+      }
+      weaponScaleRef.current.set(0, 0, 0);
+    } else if (!isDamagedActive) {
       rightHandZOffset = Math.sin(t * 2 + 0.4) * 0.15; // Idle base (Up)
       leftHandZOffset = Math.sin(t * 2 + 0.4) * 0.15;
 
@@ -683,26 +778,28 @@ export default function RobotModel({
       }
     }
 
-    if (parts.rightHand) {
-      parts.rightHand.position.z = parts.rightHand.userData.origPos.z + rightHandZOffset;
-      parts.rightHand.position.y = parts.rightHand.userData.origPos.y + rightHandYOffset;
+    if (!isDying) {
+      if (parts.rightHand) {
+        parts.rightHand.position.z = parts.rightHand.userData.origPos.z + rightHandZOffset;
+        parts.rightHand.position.y = parts.rightHand.userData.origPos.y + rightHandYOffset;
 
-      if (modelType === 'player') {
-        parts.rightHand.position.x = parts.rightHand.userData.origPos.x * 0.5;
-        parts.rightHand.rotation.x = rightHandRotX;
-      } else {
-        parts.rightHand.position.x = parts.rightHand.userData.origPos.x;
-        parts.rightHand.rotation.x = rightHandRotX;
+        if (modelType === 'player') {
+          parts.rightHand.position.x = parts.rightHand.userData.origPos.x * 0.5;
+          parts.rightHand.rotation.x = rightHandRotX;
+        } else {
+          parts.rightHand.position.x = parts.rightHand.userData.origPos.x;
+          parts.rightHand.rotation.x = rightHandRotX;
+        }
       }
-    }
-    if (parts.leftHand) {
-      parts.leftHand.position.z = parts.leftHand.userData.origPos.z + leftHandZOffset;
-      parts.leftHand.position.y = parts.leftHand.userData.origPos.y + leftHandYOffset;
+      if (parts.leftHand) {
+        parts.leftHand.position.z = parts.leftHand.userData.origPos.z + leftHandZOffset;
+        parts.leftHand.position.y = parts.leftHand.userData.origPos.y + leftHandYOffset;
 
-      if (modelType === 'player') {
-        parts.leftHand.position.x = parts.leftHand.userData.origPos.x * 0.5;
-      } else {
-        parts.leftHand.position.x = parts.leftHand.userData.origPos.x;
+        if (modelType === 'player') {
+          parts.leftHand.position.x = parts.leftHand.userData.origPos.x * 0.5;
+        } else {
+          parts.leftHand.position.x = parts.leftHand.userData.origPos.x;
+        }
       }
     }
 

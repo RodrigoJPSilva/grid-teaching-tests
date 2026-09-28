@@ -1,15 +1,18 @@
 // ============================================================
 //  App.jsx — Grid Battlegrounds: Layout Principal
-//  Editor de código CSS + Arena 3D + Cheatsheet
+//  Editor de código CSS + Arena 3D + Cheatsheet + i18n + Menu Radial + Diálogo
 // ============================================================
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import Arena3D from './components/Arena3D';
 import { useGameState } from './hooks/useGameState';
 import { parsePlayerCode, getActiveEditorClass } from './utils/GameEngine';
 import MainMenu from './components/MainMenu';
 import DemoArena from './components/DemoArena';
 import LoadingScreen from './components/LoadingScreen';
+import DialogueBox from './components/DialogueBox';
+import RadialMenu from './components/RadialMenu';
+import { detectUserLanguage, t } from './utils/i18n';
 import { soundManager } from './utils/SoundManager';
 import './App.css';
 
@@ -27,6 +30,11 @@ const EMPTY_CSS = `.player {
 
 // ── Componente Principal ────────────────────────────────────
 export default function App() {
+  const [language, setLanguage] = useState(detectUserLanguage);
+  const [inputMode, setInputMode] = useState('radial'); // 'radial' | 'code'
+  const [isEditorVisible, setIsEditorVisible] = useState(false);
+  const [gridSize, setGridSize] = useState(10);
+
   const [cssCode, setCssCode] = useState(EMPTY_CSS);
   const [committedCssCode, setCommittedCssCode] = useState(EMPTY_CSS);
 
@@ -39,16 +47,23 @@ export default function App() {
   // User Preference
   const [shouldClearCode, setShouldClearCode] = useState(false);
 
-  // States for the Cheatsheet and Alerts
+  // States for the Cheatsheet, Radial Menu, and Alerts
   const [cheatsheetHovered, setCheatsheetHovered] = useState(false);
   const [clickedTile, setClickedTile] = useState(null);
+  const [radialMenuState, setRadialMenuState] = useState(null); // { col, row, screenX, screenY }
   const [gameAlert, setGameAlert] = useState(null);
 
   // Demonstrações ativas e timing de spawn
   const [activeDemo, setActiveDemo] = useState(null);
   const [playerSpawnTime, setPlayerSpawnTime] = useState(0);
   const [cameraMode, setCameraMode] = useState('3D');
+
+  // Tutorial Interativo (Passos 1 a 4)
   const [tutorialStep, setTutorialStep] = useState(1);
+  const [tutTeleportSuccess, setTutTeleportSuccess] = useState(false);
+  const [tutBombTriggered, setTutBombTriggered] = useState(false);
+  const [tutSniperTriggered, setTutSniperTriggered] = useState(false);
+
   const [bossIntroState, setBossIntroState] = useState({
     letterbox: false,
     showHp: false,
@@ -58,9 +73,9 @@ export default function App() {
 
   // ── Sistema de Loading com Robô 3D e HUD 0-100% ────────────
   const [loadingState, setLoadingState] = useState({
-    active: true, // Inicia ativo no boot inicial da aplicação
+    active: true,
     key: 'boot',
-    title: 'INICIALIZANDO SISTEMA HACKER',
+    title: t('tacticalSystem', language),
     minDuration: 1500,
     onOpaque: null,
     onComplete: () => {
@@ -88,26 +103,36 @@ export default function App() {
     };
   }, [gameState]);
 
-  const handleStartGame = (difficulty, gridSize) => {
+  const handleStartGame = (difficulty, size, controlMode = 'radial') => {
+    const finalMode = controlMode || inputMode || 'radial';
+    setInputMode(finalMode);
     setLoadingState({
       active: true,
       key: `game-${Date.now()}`,
-      title: `CARREGANDO ARENA [${difficulty.toUpperCase()}]`,
+      title: `${t('start', language)} [${difficulty.toUpperCase()}]`,
       minDuration: 1500,
       onOpaque: () => {
-        gameState.startGame(difficulty, gridSize);
+        gameState.startGame(difficulty, size || gridSize);
         if (difficulty === 'Facil') {
           setTutorialStep(1);
+          setTutTeleportSuccess(false);
+          setTutBombTriggered(false);
+          setTutSniperTriggered(false);
         } else {
           setTutorialStep(0);
+        }
+        if (finalMode === 'radial') {
+          setIsEditorVisible(false);
+        } else {
+          setIsEditorVisible(true);
         }
       },
       onComplete: () => {
         setLoadingState(prev => ({ ...prev, active: false }));
-        // 1 segundo a mais para iniciar as animações de surgimento dos robôs após o término do loader
         const spawnStart = Date.now() + 1000;
         setPlayerSpawnTime(spawnStart);
         gameState.resetSpawnTimes(spawnStart);
+        soundManager.startBattleMusic();
       }
     });
   };
@@ -116,10 +141,11 @@ export default function App() {
     setLoadingState({
       active: true,
       key: `demo-${demoType}-${Date.now()}`,
-      title: `SIMULAÇÃO TÁTICA: ${demoType.toUpperCase()}`,
+      title: `${t('training', language)}: ${demoType.toUpperCase()}`,
       minDuration: 1500,
       onOpaque: () => {
         setActiveDemo(demoType);
+        soundManager.startBattleMusic();
       },
       onComplete: () => {
         setLoadingState(prev => ({ ...prev, active: false }));
@@ -131,16 +157,25 @@ export default function App() {
     setLoadingState({
       active: true,
       key: `menu-${Date.now()}`,
-      title: 'RETORNANDO AO MENU PRINCIPAL',
+      title: t('returnMenu', language),
       minDuration: 1500,
       onOpaque: () => {
         setActiveDemo(null);
       },
       onComplete: () => {
         setLoadingState(prev => ({ ...prev, active: false }));
+        soundManager.startMenuMusic();
       }
     });
   };
+
+  useEffect(() => {
+    if (gameState.phase === 'menu') {
+      soundManager.startMenuMusic();
+    } else if (gameState.phase === 'victory' || gameState.phase === 'gameover') {
+      soundManager.stopMusic();
+    }
+  }, [gameState.phase]);
 
   // ── Ação Global: Rodar Código ──────────────────────────────
   const handleExecuteAll = () => {
@@ -159,10 +194,10 @@ export default function App() {
         targetCol = Math.max(1, Math.min(gameState.arenaSize, targetCol));
         targetRow = Math.max(1, Math.min(gameState.arenaSize, targetRow));
         gameState.applyPlayerDamage(1);
-        setGameAlert("⚠️ FORA DA ARENA! -1 Vida");
+        setGameAlert(t('alertOutOfBounds', language));
       }
 
-      // 2. Checagem de Não Sobreposição com Inimigos/Boss
+      // 2. Checagem de Não Sobreposição com Inimigos Vivos
       let collision = false;
       for (const enemy of Object.values(gameState.enemies)) {
         if (enemy.hp <= 0) continue;
@@ -176,13 +211,25 @@ export default function App() {
 
       if (collision) {
         gameState.applyPlayerDamage(1);
-        setGameAlert("💥 COLISÃO COM INIMIGO! -1 Vida");
+        setGameAlert(t('alertCollision', language));
         targetCol = gameState.lastPlayerPos.current.col;
         targetRow = gameState.lastPlayerPos.current.row;
       }
 
       gameState.lastPlayerPos.current = { col: targetCol, row: targetRow };
       gameState.setLastParsedPos({ col: targetCol, row: targetRow });
+
+      // Verificação do Tutorial Passo 2 (Teletransporte para o bloco amarelo 3, 3)
+      if (gameState.difficulty === 'Facil' && tutorialStep === 2) {
+        if (targetCol === 3 && targetRow === 3) {
+          setTutTeleportSuccess(true);
+          soundManager.playTutorialSuccess();
+          setTimeout(() => {
+            setTutorialStep(3);
+            gameState.spawnTutorialBombTargets();
+          }, 1800);
+        }
+      }
     }
 
     // 3. Disparo de Armas
@@ -197,28 +244,6 @@ export default function App() {
       if (!parsedCommitted.sniper || parsedCurrent.sniper.col !== parsedCommitted.sniper.col || parsedCurrent.sniper.row !== parsedCommitted.sniper.row) {
         setSniperShootTrigger(Date.now());
         gameState.fireSniper(parsedCurrent.sniper.col, parsedCurrent.sniper.row);
-      }
-    }
-
-    // 4. Progressão Automática do Tutorial no Modo Fácil
-    if (gameState.difficulty === 'Facil' && tutorialStep < 4) {
-      if (tutorialStep === 1) {
-        // Passo 1: O jogador moveu seu robô
-        if (targetCol !== undefined && targetRow !== undefined && (targetCol !== 1 || targetRow !== 1)) {
-          setTutorialStep(2);
-        }
-      } else if (tutorialStep === 2) {
-        // Passo 2: O jogador armou ou disparou uma habilidade (bomba ou sniper)
-        if (parsedCurrent.bomba?.col || parsedCurrent.sniper?.col) {
-          setTutorialStep(3);
-          soundManager.playTutorialSuccess();
-          setTimeout(() => {
-            setTutorialStep(4);
-            if (gameState.setIsTutorialActive) {
-              gameState.setIsTutorialActive(false);
-            }
-          }, 2600);
-        }
       }
     }
 
@@ -249,12 +274,141 @@ export default function App() {
       return () => clearTimeout(t);
     } else if (bombCountdown === 0 && isCountingRef.current) {
       isCountingRef.current = false;
-      const parsed = parsePlayerCode(committedCssCode);
+    }
+  }, [bombCountdown]);
+
+  // Dano da bomba do jogador antecipado para 4.5s (0.5s antes do final da animação de 5s)
+  const committedCssCodeRef = useRef(committedCssCode);
+  useEffect(() => {
+    committedCssCodeRef.current = committedCssCode;
+  }, [committedCssCode]);
+
+  useEffect(() => {
+    if (!bombThrowTrigger) return;
+    const t = setTimeout(() => {
+      const parsed = parsePlayerCode(committedCssCodeRef.current || committedCssCode);
       if (parsed.bomba?.col && parsed.bomba?.row) {
         gameState.fireBomb(parsed.bomba.col, parsed.bomba.row);
       }
+    }, 4500);
+    return () => clearTimeout(t);
+  }, [bombThrowTrigger]);
+
+  // ── Interação com o Piso (Clique para Cheatsheet ou Menu Radial) ──
+  const handleTileClick = (col, row, e) => {
+    setClickedTile({ col, row });
+    if (inputMode === 'radial' && gameState.phase === 'playing') {
+      const clickX = e?.clientX || (e?.nativeEvent && e.nativeEvent.clientX) || window.innerWidth / 2;
+      const clickY = e?.clientY || (e?.nativeEvent && e.nativeEvent.clientY) || window.innerHeight / 2;
+      setRadialMenuState({ col, row, screenX: clickX, screenY: clickY });
     }
-  }, [bombCountdown, committedCssCode, gameState.fireBomb]);
+  };
+
+  // ── Execução Direta de Ações do Menu Radial ──────────────────
+  const handleRadialAction = (action, col, row) => {
+    // Fecha o menu radial e faz o piso selecionado descer suavemente
+    setRadialMenuState(null);
+
+    const playerCol = gameState.lastParsedPos?.col || gameState.lastPlayerPos?.current?.col || 1;
+    const playerRow = gameState.lastParsedPos?.row || gameState.lastPlayerPos?.current?.row || 1;
+
+    if (action === 'teleport') {
+      const newCode = `.player {\n  grid-column: ${col};\n  grid-row: ${row};\n}\n\n.bomba {\n\n}\n\n.sniper {\n\n}`;
+      setCssCode(newCode);
+      setCommittedCssCode(newCode);
+
+      gameState.lastPlayerPos.current = { col, row };
+      gameState.setLastParsedPos({ col, row });
+      soundManager.playMove();
+
+      if (gameState.difficulty === 'Facil' && tutorialStep === 2) {
+        if (col === 3 && row === 3) {
+          setTutTeleportSuccess(true);
+          soundManager.playTutorialSuccess();
+          setTimeout(() => {
+            setTutorialStep(3);
+            gameState.spawnTutorialBombTargets();
+          }, 1800);
+        }
+      }
+    } else if (action === 'bomba') {
+      const newCode = `.player {\n  grid-column: ${playerCol};\n  grid-row: ${playerRow};\n}\n\n.bomba {\n  grid-column: ${col};\n  grid-row: ${row};\n}\n\n.sniper {\n\n}`;
+      setCssCode(newCode);
+      setCommittedCssCode(newCode);
+      setBombCountdown(5);
+      setBombThrowTrigger(Date.now());
+      soundManager.playBombLaunch();
+    } else if (action === 'sniper') {
+      const newCode = `.player {\n  grid-column: ${playerCol};\n  grid-row: ${playerRow};\n}\n\n.bomba {\n\n}\n\n.sniper {\n  grid-column: ${col};\n  grid-row: ${row};\n}`;
+      setCssCode(newCode);
+      setCommittedCssCode(newCode);
+      setSniperShootTrigger(Date.now());
+      gameState.fireSniper(col, row);
+      soundManager.playSniperShot();
+    }
+  };
+
+  // ── Verificação de Conclusão dos Passos 3 e 4 do Tutorial ────
+  const enemiesList = useMemo(() => Object.values(gameState.enemies), [gameState.enemies]);
+
+  useEffect(() => {
+    if (gameState.difficulty !== 'Facil') return;
+
+    if (tutorialStep === 3) {
+      // Passo 3: 3 inimigos da bomba
+      if (enemiesList.length === 3 && enemiesList.every(e => e.hp <= 0)) {
+        if (!tutBombTriggered) {
+          setTutBombTriggered(true);
+          soundManager.playTutorialSuccess();
+          setTimeout(() => {
+            setTutorialStep(4);
+            gameState.spawnTutorialSniperTarget(8, 8);
+          }, 2400);
+        }
+      }
+    } else if (tutorialStep === 4) {
+      // Passo 4: 1 inimigo da sniper
+      if (enemiesList.length >= 1 && enemiesList.every(e => e.hp <= 0)) {
+        if (!tutSniperTriggered) {
+          setTutSniperTriggered(true);
+          soundManager.playTutorialSuccess();
+        }
+      }
+    }
+  }, [enemiesList, tutorialStep, tutBombTriggered, tutSniperTriggered, gameState]);
+
+  // ── Destaque de Pisos no Tutorial ─────────────────────────
+  const tutorialHighlightTiles = useMemo(() => {
+    if (gameState.difficulty !== 'Facil' || tutorialStep === 0) return [];
+
+    if (tutorialStep === 2) {
+      return [{
+        col: 3,
+        row: 3,
+        color: tutTeleportSuccess ? 'green' : 'yellow'
+      }];
+    }
+
+    if (tutorialStep === 3) {
+      // Piso amarelo ideal para acertar os 3 inimigos com a bomba 3x3
+      return [{
+        col: 7,
+        row: 3,
+        color: 'yellow'
+      }];
+    }
+
+    if (tutorialStep === 4) {
+      // Piso amarelo onde está o robô para o tiro sniper
+      return [{
+        col: 8,
+        row: 8,
+        color: 'yellow'
+      }];
+    }
+
+    return [];
+  }, [gameState.difficulty, tutorialStep, tutTeleportSuccess]);
 
   const handleEditorInteraction = (e) => {
     const idx = e.target.selectionStart;
@@ -263,8 +417,6 @@ export default function App() {
   };
 
   const currentRobotTool = cheatsheetHovered ? 'papel' : activeTool;
-
-  // ── Render Unificado ───────────────────────────────────────
   const activeBoss = Object.values(gameState.enemies).find(e => e.hp > 0 && e.type === 'boss');
 
   return (
@@ -281,205 +433,343 @@ export default function App() {
           onOpenDemo={handleOpenDemo}
           shouldClearCode={shouldClearCode}
           setShouldClearCode={setShouldClearCode}
+          language={language}
+          setLanguage={setLanguage}
+          inputMode={inputMode}
+          setInputMode={setInputMode}
+          gridSize={gridSize}
+          setGridSize={setGridSize}
         />
       ) : (
         <div className="app-root">
 
-      {/* Letterbox Cinematográfico do Boss */}
-      {bossIntroState.letterbox && (
-        <>
-          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '11vh', background: '#000000', zIndex: 90000, pointerEvents: 'none' }} />
-          <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: '11vh', background: '#000000', zIndex: 90000, pointerEvents: 'none' }} />
-        </>
-      )}
-
-      {/* HUD Superior (Vidas / Inimigos / Fase) no Canto Superior Direito com leve borda branca */}
-      <div style={{
-        position: 'absolute',
-        top: '20px',
-        right: '20px',
-        zIndex: 100,
-        display: 'flex',
-        gap: '20px',
-        color: '#00ddaa',
-        fontFamily: 'monospace',
-        fontSize: '18px',
-        background: 'rgba(0,0,0,0.78)',
-        border: '1px solid rgba(255, 255, 255, 0.45)',
-        boxShadow: '0 0 12px rgba(255, 255, 255, 0.15)',
-        padding: '10px 20px',
-        borderRadius: '4px',
-        alignItems: 'center'
-      }}>
-        <div>♥ HP JOGADOR: {gameState.playerHp}/3</div>
-        <div>💀 INIMIGOS VIVOS: {Object.values(gameState.enemies).filter(e => e.hp > 0).length}</div>
-        <div style={{ color: '#fff', fontSize: '14px', marginLeft: '10px' }}>[Fase {gameState.currentLevel} - {gameState.difficulty}]</div>
-      </div>
-
-      {/* Alerta de Jogo (Clamp / Colisão) */}
-      {gameAlert && (
-        <div style={{
-          position: 'absolute', top: '75px', right: '20px', zIndex: 110,
-          background: 'rgba(255, 30, 30, 0.85)', color: '#ffffff',
-          fontFamily: 'monospace', fontWeight: 'bold', fontSize: '16px',
-          padding: '8px 16px', borderRadius: '4px', border: '1px solid #ff5555',
-          boxShadow: '0 0 15px rgba(255, 0, 0, 0.6)',
-          animation: 'shake 0.3s infinite alternate'
-        }}>
-          {gameAlert}
-        </div>
-      )}
-
-      {/* HUD Boss */}
-      {activeBoss && (bossIntroState.showHp || !bossIntroState.isIntroActive) && (
-        <div style={{
-          position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
-          width: '50%', zIndex: 100, background: 'rgba(0,0,0,0.85)', padding: '12px 16px',
-          border: '2px solid #BC0001', borderRadius: '4px',
-          boxShadow: '0 0 20px rgba(188, 0, 1, 0.4)'
-        }}>
-          <div style={{ color: '#ff2233', textAlign: 'center', fontWeight: 'bold', fontSize: '18px', marginBottom: '8px', letterSpacing: '2px', textTransform: 'uppercase' }}>
-            {activeBoss.name}
-          </div>
-          <div style={{ width: '100%', height: '18px', background: '#1a1a1a', borderRadius: '2px', overflow: 'hidden', border: '1px solid #440000' }}>
-            <div style={{
-              width: bossIntroState.hpFillPercent !== undefined
-                ? `${bossIntroState.hpFillPercent}%`
-                : `${(activeBoss.hp / activeBoss.maxHp) * 100}%`,
-              height: '100%', background: 'linear-gradient(90deg, #880000, #ff0033)', transition: 'width 0.25s'
-            }} />
-          </div>
-        </div>
-      )}
-
-      {gameState.phase === 'gameover' && (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(50,0,0,0.85)', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ff2222' }}>
-          <h1>GAME OVER</h1>
-          <button className="action-btn" onClick={() => window.location.reload()} style={{ marginTop: '20px' }}>REINICIAR SISTEMA</button>
-        </div>
-      )}
-
-      {gameState.phase === 'victory' && (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,50,20,0.85)', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#00ffcc' }}>
-          <h1>SISTEMA HACKEADO COM SUCESSO!</h1>
-          <p>Você concluiu a dificuldade {gameState.difficulty}</p>
-          <button className="action-btn" onClick={() => window.location.reload()} style={{ marginTop: '20px' }}>VOLTAR AO MENU</button>
-        </div>
-      )}
-
-      {/* SIDEBAR: Editor CSS */}
-      <div className="sidebar" style={{ pointerEvents: cheatsheetHovered ? 'none' : 'auto', opacity: cheatsheetHovered ? 0.5 : 1 }}>
-        <div className="editor-header">
-          <span className="editor-icon">{'</>'}</span>
-          <span>EDITOR CSS</span>
-        </div>
-
-        <textarea
-          className="editor-textarea"
-          value={cssCode}
-          onChange={e => setCssCode(e.target.value)}
-          onKeyUp={handleEditorInteraction}
-          onClick={handleEditorInteraction}
-          spellCheck="false"
-        />
-
-        <div className="editor-actions">
-          <button className="action-btn execute-btn" onClick={handleExecuteAll}>
-            ▶ RODAR CÓDIGO (Ctrl+Enter)
-          </button>
-
-          {/* Seletor de Câmeras no canto inferior esquerdo */}
-          <div className="camera-mode-selector">
-            <button
-              type="button"
-              className={`camera-btn ${cameraMode === '3D' ? 'active' : ''}`}
-              onClick={() => { soundManager.playUIClick(); setCameraMode('3D'); }}
-              title="Câmera 3D Enquadramento Próximo"
-            >
-              🎥 3D
-            </button>
-            <button
-              type="button"
-              className={`camera-btn ${cameraMode === '2D' ? 'active' : ''}`}
-              onClick={() => { soundManager.playUIClick(); setCameraMode('2D'); }}
-              title="Câmera 2D Vista Superior"
-            >
-              📐 2D
-            </button>
-            <button
-              type="button"
-              className={`camera-btn ${cameraMode === 'livre' ? 'active' : ''}`}
-              onClick={() => { soundManager.playUIClick(); setCameraMode('livre'); }}
-              title="Câmera Livre Orbit"
-            >
-              🌐 LIVRE
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* CANVAS 3D */}
-      <div className="canvas-container">
-        <Arena3D
-          cssCode={committedCssCode}
-          previewCode={cssCode}
-          enemies={gameState.enemies}
-          playerHp={gameState.playerHp}
-          activeTool={currentRobotTool}
-          playerRevealed={gameState.playerRevealed}
-          setPlayerRevealed={gameState.setPlayerRevealed}
-          lastPlayerPos={gameState.lastPlayerPos}
-          bombCountdown={bombCountdown}
-          bombThrowTrigger={bombThrowTrigger}
-          sniperShootTrigger={sniperShootTrigger}
-          arenaSize={gameState.arenaSize}
-          onTileClick={(col, row) => setClickedTile({ col, row })}
-          incomingBombs={gameState.incomingBombs}
-          playerSpawnTime={playerSpawnTime}
-          difficulty={gameState.difficulty}
-          onBossIntroChange={setBossIntroState}
-          triggerBossDescent={gameState.triggerBossDescent}
-          completeBossIntro={gameState.completeBossIntro}
-          cameraMode={cameraMode}
-          tutorialStep={tutorialStep}
-          currentLevel={gameState.currentLevel}
-        />
-      </div>
-
-      {/* Folha de Dicas (Cheatsheet) */}
-      <div
-        className="cheatsheet-container"
-        onMouseEnter={() => setCheatsheetHovered(true)}
-        onMouseLeave={() => setCheatsheetHovered(false)}
-      >
-        <div className="cheatsheet-arrow">◀</div>
-        <div className="cheatsheet-content">
-          <h2 style={{ fontSize: '18px', marginBottom: '10px', textDecoration: 'underline' }}>Guia Hacker</h2>
-          <p>Para se mover, use:</p>
-          <p><strong>.player</strong> &#123;</p>
-          <p>&nbsp;&nbsp;grid-column: X;</p>
-          <p>&nbsp;&nbsp;grid-row: Y;</p>
-          <p>&#125;</p>
-          <br />
-          <p>A <strong>.bomba</strong> atinge área 3x3 (-1 Vida).</p>
-          <p>A <strong>.sniper</strong> atinge apenas o alvo final (-3 Vidas).</p>
-          <br />
-          <br />
-          <p style={{ color: '#0055cc', fontStyle: 'italic', fontSize: '12px' }}>
-            Dica secreta: clique em um bloco e volte aqui...
-          </p>
-          {clickedTile && (
-            <p style={{ color: '#aa0000', fontWeight: 'bold' }}>
-              &gt; Bloco clicado: [grid-column: {clickedTile.col}; grid-row: {clickedTile.row}]
-            </p>
+          {/* Letterbox Cinematográfico do Boss */}
+          {bossIntroState.letterbox && (
+            <>
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '11vh', background: '#000000', zIndex: 90000, pointerEvents: 'none' }} />
+              <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: '11vh', background: '#000000', zIndex: 90000, pointerEvents: 'none' }} />
+            </>
           )}
-        </div>
-      </div>
+
+          {/* HUD Superior (Vidas / Inimigos / Fase) no Canto Superior Direito */}
+          <div style={{
+            position: 'absolute',
+            top: '20px',
+            right: '20px',
+            zIndex: 100,
+            display: 'flex',
+            gap: '20px',
+            color: '#00ddaa',
+            fontFamily: 'monospace',
+            fontSize: '18px',
+            background: 'rgba(0,0,0,0.78)',
+            border: '1px solid rgba(255, 255, 255, 0.45)',
+            boxShadow: '0 0 12px rgba(255, 255, 255, 0.15)',
+            padding: '10px 20px',
+            borderRadius: '4px',
+            alignItems: 'center'
+          }}>
+            <div>{t('playerHp', language)} {gameState.playerHp}/3</div>
+            <div>{t('enemiesAlive', language)} {Object.values(gameState.enemies).filter(e => e.hp > 0).length}</div>
+            <div style={{ color: '#fff', fontSize: '14px', marginLeft: '10px' }}>
+              [{t('level', language)} {gameState.currentLevel} - {gameState.difficulty === 'Facil' ? t('easy', language) : gameState.difficulty === 'Normal' ? t('normal', language) : t('matrix', language)}]
+            </div>
+          </div>
+
+          {/* Botão Alternador do Editor no modo Menu Radial */}
+          {inputMode === 'radial' && (
+            <button
+              type="button"
+              className="toggle-editor-btn"
+              onClick={() => setIsEditorVisible(v => !v)}
+              title={isEditorVisible ? t('hideEditorBtn', language) : t('showEditorBtn', language)}
+            >
+              <span>{isEditorVisible ? '◀' : '▶'}</span>
+              <span>{isEditorVisible ? t('hideEditorBtn', language) : t('showEditorBtn', language)}</span>
+            </button>
+          )}
+
+          {/* Alerta de Jogo (Clamp / Colisão) */}
+          {gameAlert && (
+            <div style={{
+              position: 'absolute', top: '75px', right: '20px', zIndex: 110,
+              background: 'rgba(255, 30, 30, 0.85)', color: '#ffffff',
+              fontFamily: 'monospace', fontWeight: 'bold', fontSize: '16px',
+              padding: '8px 16px', borderRadius: '4px', border: '1px solid #ff5555',
+              boxShadow: '0 0 15px rgba(255, 0, 0, 0.6)',
+              animation: 'shake 0.3s infinite alternate'
+            }}>
+              {gameAlert}
+            </div>
+          )}
+
+          {/* HUD Boss */}
+          {activeBoss && (bossIntroState.showHp || !bossIntroState.isIntroActive) && (
+            <div style={{
+              position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
+              width: '50%', zIndex: 100, background: 'rgba(0,0,0,0.85)', padding: '12px 16px',
+              border: '2px solid #BC0001', borderRadius: '4px',
+              boxShadow: '0 0 20px rgba(188, 0, 1, 0.4)'
+            }}>
+              <div style={{ color: '#ff2233', textAlign: 'center', fontWeight: 'bold', fontSize: '18px', marginBottom: '8px', letterSpacing: '2px', textTransform: 'uppercase' }}>
+                {activeBoss.name}
+              </div>
+              <div style={{ width: '100%', height: '18px', background: '#1a1a1a', borderRadius: '2px', overflow: 'hidden', border: '1px solid #440000' }}>
+                <div style={{
+                  width: bossIntroState.hpFillPercent !== undefined
+                    ? `${bossIntroState.hpFillPercent}%`
+                    : `${(activeBoss.hp / activeBoss.maxHp) * 100}%`,
+                  height: '100%', background: 'linear-gradient(90deg, #880000, #ff0033)', transition: 'width 0.25s'
+                }} />
+              </div>
+            </div>
+          )}
+
+          {/* Game Over Screen */}
+          {gameState.phase === 'gameover' && (
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(50,0,0,0.88)', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#ff2222' }}>
+              <h1 style={{ fontSize: '3rem', letterSpacing: '4px', marginBottom: '10px' }}>{t('gameOver', language)}</h1>
+              <button className="action-btn" onClick={() => window.location.reload()} style={{ marginTop: '20px', width: 'auto', padding: '12px 30px' }}>
+                {t('restartSystem', language)}
+              </button>
+            </div>
+          )}
+
+          {/* Victory Screen */}
+          {gameState.phase === 'victory' && (
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,50,20,0.88)', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#00ffcc' }}>
+              <h1 style={{ fontSize: '2.5rem', letterSpacing: '3px', marginBottom: '10px' }}>{t('victoryTitle', language)}</h1>
+              <p style={{ fontSize: '1.2rem' }}>{t('victoryDesc', language)} {gameState.difficulty}</p>
+              <button className="action-btn" onClick={() => window.location.reload()} style={{ marginTop: '20px', width: 'auto', padding: '12px 30px' }}>
+                {t('returnMenu', language)}
+              </button>
+            </div>
+          )}
+
+          {/* SIDEBAR: Editor CSS (Ocultável no Modo Menu Radial) */}
+          {isEditorVisible && (
+            <div className="sidebar" style={{ pointerEvents: cheatsheetHovered ? 'none' : 'auto', opacity: cheatsheetHovered ? 0.5 : 1 }}>
+              <div className="editor-header">
+                <span className="editor-icon">{'</>'}</span>
+                <span>{t('editorTitle', language)}</span>
+                <button
+                  type="button"
+                  onClick={() => setIsEditorVisible(false)}
+                  title={t('hideEditorBtn', language)}
+                  style={{
+                    marginLeft: 'auto',
+                    background: 'none',
+                    border: 'none',
+                    color: '#88a8b8',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    padding: '4px 8px'
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <textarea
+                className="editor-textarea"
+                value={cssCode}
+                onChange={e => setCssCode(e.target.value)}
+                onKeyUp={handleEditorInteraction}
+                onClick={handleEditorInteraction}
+                spellCheck="false"
+              />
+
+              <div className="editor-actions">
+                <button className="action-btn execute-btn" onClick={handleExecuteAll}>
+                  {t('runCode', language)}
+                </button>
+
+                {/* Seletor de Câmeras */}
+                <div className="camera-mode-selector">
+                  <button
+                    type="button"
+                    className={`camera-btn ${cameraMode === '3D' ? 'active' : ''}`}
+                    onClick={() => { soundManager.playUIClick(); setCameraMode('3D'); }}
+                    title={t('camera3D', language)}
+                  >
+                    {t('camera3D', language)}
+                  </button>
+                  <button
+                    type="button"
+                    className={`camera-btn ${cameraMode === '2D' ? 'active' : ''}`}
+                    onClick={() => { soundManager.playUIClick(); setCameraMode('2D'); }}
+                    title={t('camera2D', language)}
+                  >
+                    {t('camera2D', language)}
+                  </button>
+                  <button
+                    type="button"
+                    className={`camera-btn ${cameraMode === 'livre' ? 'active' : ''}`}
+                    onClick={() => { soundManager.playUIClick(); setCameraMode('livre'); }}
+                    title={t('cameraFree', language)}
+                  >
+                    {t('cameraFree', language)}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* CANVAS 3D */}
+          <div className="canvas-container">
+            {/* HUD Flutuante no Modo Menu Radial (quando o editor estiver oculto) */}
+            {!isEditorVisible && (
+              <div style={{ position: 'absolute', top: '16px', left: '16px', zIndex: 100, display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div className="camera-mode-selector" style={{ margin: 0 }}>
+                  <button
+                    type="button"
+                    className={`camera-btn ${cameraMode === '3D' ? 'active' : ''}`}
+                    onClick={() => { soundManager.playUIClick(); setCameraMode('3D'); }}
+                    title={t('camera3D', language)}
+                  >
+                    {t('camera3D', language)}
+                  </button>
+                  <button
+                    type="button"
+                    className={`camera-btn ${cameraMode === '2D' ? 'active' : ''}`}
+                    onClick={() => { soundManager.playUIClick(); setCameraMode('2D'); }}
+                    title={t('camera2D', language)}
+                  >
+                    {t('camera2D', language)}
+                  </button>
+                  <button
+                    type="button"
+                    className={`camera-btn ${cameraMode === 'livre' ? 'active' : ''}`}
+                    onClick={() => { soundManager.playUIClick(); setCameraMode('livre'); }}
+                    title={t('cameraFree', language)}
+                  >
+                    {t('cameraFree', language)}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="camera-btn"
+                  onClick={() => setIsEditorVisible(true)}
+                  style={{ width: 'auto', padding: '0 12px', height: '32px' }}
+                >
+                  {'</> ' + t('showEditorBtn', language)}
+                </button>
+              </div>
+            )}
+            <Arena3D
+              cssCode={committedCssCode}
+              previewCode={cssCode}
+              enemies={gameState.enemies}
+              playerHp={gameState.playerHp}
+              activeTool={currentRobotTool}
+              playerRevealed={gameState.playerRevealed}
+              setPlayerRevealed={gameState.setPlayerRevealed}
+              lastPlayerPos={gameState.lastPlayerPos}
+              bombCountdown={bombCountdown}
+              bombThrowTrigger={bombThrowTrigger}
+              sniperShootTrigger={sniperShootTrigger}
+              arenaSize={gameState.arenaSize}
+              onTileClick={handleTileClick}
+              selectedTile={radialMenuState ? { col: radialMenuState.col, row: radialMenuState.row } : null}
+              incomingBombs={gameState.incomingBombs}
+              playerSpawnTime={playerSpawnTime}
+              difficulty={gameState.difficulty}
+              onBossIntroChange={setBossIntroState}
+              triggerBossDescent={gameState.triggerBossDescent}
+              completeBossIntro={gameState.completeBossIntro}
+              cameraMode={cameraMode}
+              tutorialStep={tutorialStep}
+              currentLevel={gameState.currentLevel}
+              highlightTiles={tutorialHighlightTiles}
+            />
+
+            {/* ── BLOCO DE CONVERSA DO PERSONAGEM (Substituindo a TV) ── */}
+            {gameState.difficulty === 'Facil' && tutorialStep >= 1 && tutorialStep <= 4 && (
+              <DialogueBox
+                title="AI TACTICAL ADVISOR"
+                stepLabel={`[TUTORIAL ${tutorialStep}/4]`}
+                message={
+                  tutorialStep === 1
+                    ? t('tutWelcome', language)
+                    : tutorialStep === 2
+                    ? (tutTeleportSuccess ? t('tutTeleportSuccess', language) : t('tutTeleport', language))
+                    : tutorialStep === 3
+                    ? (tutBombTriggered ? t('tutBombSuccess', language) : t('tutBomb', language))
+                    : (tutSniperTriggered ? t('tutSniperSuccess', language) : t('tutSniper', language))
+                }
+                onAction={
+                  tutorialStep === 1
+                    ? () => setTutorialStep(2)
+                    : tutorialStep === 4 && tutSniperTriggered
+                    ? () => {
+                        setTutorialStep(0);
+                        if (gameState.completeTutorialAndStartGame) {
+                          gameState.completeTutorialAndStartGame();
+                        } else if (gameState.setIsTutorialActive) {
+                          gameState.setIsTutorialActive(false);
+                        }
+                      }
+                    : null
+                }
+                actionLabel={
+                  tutorialStep === 1
+                    ? t('continueBtn', language)
+                    : tutorialStep === 4 && tutSniperTriggered
+                    ? t('finishBtn', language)
+                    : t('nextBtn', language)
+                }
+              />
+            )}
+          </div>
+
+          {/* ── MENU RADIAL TÁTICO NO PISO ── */}
+          {radialMenuState && (
+            <RadialMenu
+              col={radialMenuState.col}
+              row={radialMenuState.row}
+              screenX={radialMenuState.screenX}
+              screenY={radialMenuState.screenY}
+              onSelect={handleRadialAction}
+              onClose={() => setRadialMenuState(null)}
+              language={language}
+            />
+          )}
+
+          {/* Folha de Dicas (Cheatsheet) */}
+          <div
+            className="cheatsheet-container"
+            onMouseEnter={() => setCheatsheetHovered(true)}
+            onMouseLeave={() => setCheatsheetHovered(false)}
+          >
+            <div className="cheatsheet-arrow">◀</div>
+            <div className="cheatsheet-content">
+              <h2>{t('hackerGuide', language)}</h2>
+              <p>{t('toMoveUse', language)}</p>
+              <p><strong>.player</strong> &#123;</p>
+              <p>&nbsp;&nbsp;grid-column: X;</p>
+              <p>&nbsp;&nbsp;grid-row: Y;</p>
+              <p>&#125;</p>
+              <div className="cheatsheet-spacer" />
+              <p>{t('bombInfo', language)}</p>
+              <p>{t('sniperInfo', language)}</p>
+              <div className="cheatsheet-spacer" />
+              <div className="cheatsheet-spacer" />
+              <p className="cheatsheet-tip">
+                {t('secretTip', language)}
+              </p>
+              {clickedTile && (
+                <p className="cheatsheet-clicked">
+                  {t('clickedTile', language)} [grid-column: {clickedTile.col}; grid-row: {clickedTile.row}]
+                </p>
+              )}
+            </div>
+          </div>
 
         </div>
       )}
 
-      {/* Tela de Carregamento Global com Fade In e Fade Out */}
+      {/* Tela de Carregamento Global */}
       {loadingState.active && (
         <LoadingScreen
           key={loadingState.key || 'loader'}

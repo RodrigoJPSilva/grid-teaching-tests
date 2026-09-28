@@ -77,7 +77,7 @@ export default function Arsenal({
 
       {/* ── Mapa de Ameaças ─────────────────────────────────── */}
       <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>⚠ AMEAÇAS</h3>
+        <h3 className={styles.sectionTitle}>AMEAÇAS</h3>
         <div className={styles.enemyTracker}>
           {enemyList.map(enemy => (
             <div
@@ -95,7 +95,7 @@ export default function Arsenal({
                 </div>
               </div>
               <span className={styles.enemyRowHp}>
-                {enemy.hp <= 0 ? '☠' : `${enemy.hp}/${enemy.maxHp}`}
+                {enemy.hp <= 0 ? 'DEAD' : `${enemy.hp}/${enemy.maxHp}`}
               </span>
             </div>
           ))}
@@ -104,7 +104,7 @@ export default function Arsenal({
 
       {/* ── Seleção de Armas ─────────────────────────────────── */}
       <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>⚙ ARSENAL</h3>
+        <h3 className={styles.sectionTitle}>ARSENAL</h3>
         <div className={styles.weaponList}>
           {Object.values(WEAPONS).map(weapon => {
             const isSelected = selectedWeapon === weapon.id;
@@ -153,7 +153,7 @@ export default function Arsenal({
 
       {/* ── Controles de Mira ────────────────────────────────── */}
       <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>🎯 MIRA</h3>
+        <h3 className={styles.sectionTitle}>MIRA</h3>
 
         {/* Coordenadas numéricas da mira */}
         <div className={styles.aimCoords}>

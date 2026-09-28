@@ -6,7 +6,7 @@ import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { gridToPosition3D } from '../utils/GameEngine';
 import RobotModel from './RobotModel';
 
-export default function VoxelEnemy({ enemy, botTool, meshRef, arenaSize = 10, isAwaitingSpawn, scaleOverride, onLanded }) {
+export default function VoxelEnemy({ enemy, botTool, meshRef, arenaSize = 10, isAwaitingSpawn, scaleOverride, onLanded, isFloorElevated = false }) {
   const [damageTrigger, setDamageTrigger] = useState(0);
   const prevHp = useRef(enemy.hp);
 
@@ -60,6 +60,8 @@ export default function VoxelEnemy({ enemy, botTool, meshRef, arenaSize = 10, is
       landingState={enemy.landingState}
       skyBombAttack={enemy.skyBombAttack}
       bombAttack={enemy.bombAttack}
+      isDead={enemy.hp <= 0 || !!enemy.isDead}
+      isFloorElevated={isFloorElevated}
     />
   );
 }

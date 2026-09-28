@@ -133,11 +133,11 @@ export default function DemoArena({ type, onClose, onSwitch }) {
 
           setTimeout(() => {
             if (!active) return;
-            // Impacto da bomba aos 5 segundos
+            // Impacto da bomba aos 4.5s - 5s
             setBombActive(false);
             setBombCountdown(0);
             setWaveHits([{ col: 5, row: 5, time: Date.now() }]);
-            setEnemyHp(0);
+            setEnemyHp(prev => Math.max(1, prev - 1)); // O NPC toma dano mas NÃO morre na demo
             soundManager.playExplosion();
 
             setTimeout(() => {
@@ -173,7 +173,7 @@ export default function DemoArena({ type, onClose, onSwitch }) {
 
           setTimeout(() => {
             if (!active) return;
-            setEnemyHp(0);
+            setEnemyHp(prev => Math.max(1, prev - 1)); // O NPC toma dano mas NÃO morre na demo
             soundManager.playDamage();
 
             setTimeout(() => {
@@ -295,6 +295,11 @@ export default function DemoArena({ type, onClose, onSwitch }) {
                startTime={bombTrigger} 
                duration={5000}
                shooterType="player"
+               onImpact={() => {
+                 setWaveHits([{ col: 5, row: 5, time: Date.now() }]);
+                 soundManager.playExplosion();
+                 setEnemyHp(prev => Math.max(1, prev - 1));
+               }}
              />
           )}
 

@@ -100,7 +100,11 @@ export function useGameState() {
     soundManager.playDamage();
     setPlayerHp(hp => {
       const newHp = Math.max(0, hp - amount);
-      if (newHp === 0) setPhase('gameover');
+      if (newHp === 0) {
+        setTimeout(() => {
+          setPhase('gameover');
+        }, 2600);
+      }
       return newHp;
     });
     return true;
@@ -159,29 +163,47 @@ export function useGameState() {
 
   const triggerBossDescent = useCallback((bossId, timestamp = Date.now()) => {
     setEnemies(prev => {
-      if (!prev[bossId]) return prev;
-      return {
-        ...prev,
-        [bossId]: {
-          ...prev[bossId],
+      let updated = { ...prev };
+      if (bossId && updated[bossId]) {
+        updated[bossId] = {
+          ...updated[bossId],
           spawnTime: timestamp,
-        }
-      };
+        };
+      } else {
+        Object.keys(updated).forEach(id => {
+          if (updated[id].type === 'boss') {
+            updated[id] = { ...updated[id], spawnTime: timestamp };
+          }
+        });
+      }
+      return updated;
     });
   }, []);
 
   const completeBossIntro = useCallback((bossId) => {
     setEnemies(prev => {
-      if (!prev[bossId]) return prev;
-      return {
-        ...prev,
-        [bossId]: {
-          ...prev[bossId],
+      let updated = { ...prev };
+      const now = Date.now();
+      if (bossId && updated[bossId]) {
+        updated[bossId] = {
+          ...updated[bossId],
           isIntroActive: false,
-          lastBombTime: Date.now(),
-          lastTeleTime: Date.now(),
-        }
-      };
+          lastBombTime: now,
+          lastTeleTime: now,
+        };
+      } else {
+        Object.keys(updated).forEach(id => {
+          if (updated[id].type === 'boss') {
+            updated[id] = {
+              ...updated[id],
+              isIntroActive: false,
+              lastBombTime: now,
+              lastTeleTime: now,
+            };
+          }
+        });
+      }
+      return updated;
     });
   }, []);
 
@@ -215,20 +237,118 @@ export function useGameState() {
     lastPlayerDamageTime.current = 0;
     setPhase('playing');
     setIncomingBombs([]);
-    setIsTutorialActive(diff === 'Facil');
-    spawnWave(diff, 1, customSize);
+    const isEasy = diff === 'Facil';
+    setIsTutorialActive(isEasy);
+    if (!isEasy) {
+      spawnWave(diff, 1, customSize);
+    } else {
+      setEnemies({});
+    }
   }, [spawnWave]);
 
+  const spawnTutorialBombTargets = useCallback(() => {
+    const now = Date.now();
+    setEnemies({
+      'tut-bot-1': {
+        id: 'tut-bot-1',
+        name: 'Target-Alpha',
+        type: 'normal',
+        hp: 1,
+        maxHp: 1,
+        size: [1, 1],
+        position: [2, 7],
+        revealed: true,
+        bombDelay: 999999,
+        teleDelay: 999999,
+        lastBombTime: now,
+        lastTeleTime: now,
+        lastDamageTime: 0,
+        bombsToFire: 0,
+        spawnTime: now,
+        isIntroActive: false,
+      },
+      'tut-bot-2': {
+        id: 'tut-bot-2',
+        name: 'Target-Bravo',
+        type: 'normal',
+        hp: 1,
+        maxHp: 1,
+        size: [1, 1],
+        position: [3, 8],
+        revealed: true,
+        bombDelay: 999999,
+        teleDelay: 999999,
+        lastBombTime: now,
+        lastTeleTime: now,
+        lastDamageTime: 0,
+        bombsToFire: 0,
+        spawnTime: now,
+        isIntroActive: false,
+      },
+      'tut-bot-3': {
+        id: 'tut-bot-3',
+        name: 'Target-Charlie',
+        type: 'normal',
+        hp: 1,
+        maxHp: 1,
+        size: [1, 1],
+        position: [4, 7],
+        revealed: true,
+        bombDelay: 999999,
+        teleDelay: 999999,
+        lastBombTime: now,
+        lastTeleTime: now,
+        lastDamageTime: 0,
+        bombsToFire: 0,
+        spawnTime: now,
+        isIntroActive: false,
+      },
+    });
+  }, []);
+
+  const spawnTutorialSniperTarget = useCallback((targetCol = 8, targetRow = 8) => {
+    const now = Date.now();
+    setEnemies({
+      'tut-sniper-bot': {
+        id: 'tut-sniper-bot',
+        name: 'Infiltrator',
+        type: 'normal',
+        hp: 3,
+        maxHp: 3,
+        size: [1, 1],
+        position: [targetRow, targetCol],
+        revealed: true,
+        bombDelay: 999999,
+        teleDelay: 999999,
+        lastBombTime: now,
+        lastTeleTime: now,
+        lastDamageTime: 0,
+        bombsToFire: 0,
+        spawnTime: now,
+        isIntroActive: false,
+      }
+    });
+  }, []);
+
+  const completeTutorialAndStartGame = useCallback(() => {
+    setIsTutorialActive(false);
+    setEnemies({});
+    // Pausa de 4 segundos de preparação antes dos primeiros ataques da Fase 1
+    setTimeout(() => {
+      spawnWave('Facil', 1, arenaSize);
+    }, 4000);
+  }, [spawnWave, arenaSize]);
+
   useEffect(() => {
-    if (phase !== 'playing') return;
+    if (phase !== 'playing' || isTutorialActive) return;
     const aliveCount = Object.values(enemies).filter(e => e.hp > 0).length;
     if (aliveCount === 0 && Object.keys(enemies).length > 0) {
       const t = setTimeout(() => {
         spawnWave(difficulty, currentLevel + 1, arenaSize);
-      }, 2000);
+      }, 2500);
       return () => clearTimeout(t);
     }
-  }, [enemies, phase, difficulty, currentLevel, arenaSize, spawnWave]);
+  }, [enemies, phase, difficulty, currentLevel, arenaSize, isTutorialActive, spawnWave]);
 
   // ── Inteligência dos Bots ─────────────────────────────────
   useEffect(() => {
@@ -242,7 +362,7 @@ export function useGameState() {
         let changed = false;
         
         Object.values(updated).forEach(enemy => {
-          if (enemy.hp <= 0 || enemy.isIntroActive) return;
+          if (enemy.hp <= 0 || enemy.isIntroActive || isTutorialActive) return;
           
           let eCopy = { ...enemy };
           let didSomething = false;
@@ -258,6 +378,7 @@ export function useGameState() {
                     const targetCol = Math.floor(Math.random() * arenaSize) + 1;
                     const targetRow = Math.floor(Math.random() * arenaSize) + 1;
                     const bombId = `b-${Date.now()}-${Math.random()}`;
+                    soundManager.playBombLaunch();
                     setIncomingBombs(b => [...b, { 
                       id: bombId, col: targetCol, row: targetRow, spawnTime: Date.now(),
                       shooterPos: shootPos,
@@ -301,6 +422,7 @@ export function useGameState() {
                   const targetCol = Math.floor(Math.random() * arenaSize) + 1;
                   const targetRow = Math.floor(Math.random() * arenaSize) + 1;
                   const bombId = `b-${Date.now()}-${Math.random()}`;
+                  soundManager.playBombLaunch();
                   setIncomingBombs(b => [...b, { 
                     id: bombId,
                     col: targetCol,
@@ -445,7 +567,14 @@ export function useGameState() {
         }
         
         if (isHit) {
-          updated[enemy.id] = { ...enemy, hp: Math.max(0, enemy.hp - 1), lastDamageTime: now };
+          const newHp = Math.max(0, enemy.hp - 1);
+          updated[enemy.id] = {
+            ...enemy,
+            hp: newHp,
+            isDead: newHp <= 0,
+            deathTime: newHp <= 0 ? (enemy.deathTime || now) : 0,
+            lastDamageTime: now
+          };
         }
       });
       return updated;
@@ -461,7 +590,14 @@ export function useGameState() {
         if (enemy.lastDamageTime && now - enemy.lastDamageTime < 2000) return;
 
         if (checkEnemyHit(enemy, row, col)) {
-          updated[enemy.id] = { ...enemy, hp: Math.max(0, enemy.hp - 3), lastDamageTime: now };
+          const newHp = Math.max(0, enemy.hp - 3);
+          updated[enemy.id] = {
+            ...enemy,
+            hp: newHp,
+            isDead: newHp <= 0,
+            deathTime: newHp <= 0 ? (enemy.deathTime || now) : 0,
+            lastDamageTime: now
+          };
         }
       });
       return updated;
@@ -481,5 +617,8 @@ export function useGameState() {
     completeBossIntro,
     triggerBossJump,
     isTutorialActive, setIsTutorialActive,
+    spawnTutorialBombTargets,
+    spawnTutorialSniperTarget,
+    completeTutorialAndStartGame,
   };
 }

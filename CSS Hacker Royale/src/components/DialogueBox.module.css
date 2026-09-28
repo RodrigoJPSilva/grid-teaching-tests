@@ -1,0 +1,226 @@
+/* ============================================================
+   DialogueBox.module.css — Bloco de Diálogo do Personagem
+   Cores e layout fiéis ao desenho do usuário:
+   - Moldura e separador em VERMELHO (#ff0033)
+   - Área da cabeça do robô com cantoneiras em AMARELO (#ffd700)
+   - Texto de conversa em VERDE neon (#00ff88)
+   ============================================================ */
+
+.dialogueRoot {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 32px);
+  max-width: 980px;
+  height: 145px;
+  background: rgba(3, 7, 14, 0.95);
+  border: 2px solid #ff1744;
+  box-shadow: 
+    0 0 20px rgba(255, 23, 68, 0.4),
+    inset 0 0 25px rgba(255, 23, 68, 0.15);
+  border-radius: 6px;
+  display: flex;
+  align-items: stretch;
+  z-index: 120;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  user-select: none;
+  font-family: 'Share Tech Mono', 'Orbitron', monospace;
+  animation: dialogueSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes dialogueSlideUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 25px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* ── Área da Cabeça do Robô (Lado Esquerdo) ── */
+.avatarSection {
+  width: 145px;
+  min-width: 145px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background: rgba(8, 12, 20, 0.85);
+  padding: 8px;
+}
+
+/* Moldura interna AMARELA indicando a cabeça do robô */
+.avatarYellowFrame {
+  width: 100%;
+  height: 100%;
+  border: 2px solid #ffd700;
+  border-radius: 4px;
+  position: relative;
+  background: radial-gradient(circle at center, rgba(255, 215, 0, 0.12) 0%, rgba(3, 7, 14, 0.9) 80%);
+  box-shadow: 
+    0 0 14px rgba(255, 215, 0, 0.35),
+    inset 0 0 10px rgba(255, 215, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Cantoneiras estilizadas na caixa amarela */
+.avatarYellowFrame::before,
+.avatarYellowFrame::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.avatarYellowFrame::before {
+  top: 3px;
+  left: 3px;
+  border-top: 3px solid #ffea00;
+  border-left: 3px solid #ffea00;
+}
+
+.avatarYellowFrame::after {
+  bottom: 3px;
+  right: 3px;
+  border-bottom: 3px solid #ffea00;
+  border-right: 3px solid #ffea00;
+}
+
+/* Canvas 3D da Cabeça do Robô */
+.avatarCanvasWrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  z-index: 2;
+}
+
+/* ── Divisória Vertical em VERMELHO ── */
+.redDivider {
+  width: 2px;
+  background: linear-gradient(180deg, transparent, #ff1744 15%, #ff1744 85%, transparent);
+  box-shadow: 0 0 10px rgba(255, 23, 68, 0.8);
+}
+
+/* ── Área de Conteúdo / Texto (Lado Direito) ── */
+.contentSection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 12px 18px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Scanlines de terminal no fundo do texto */
+.contentSection::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.3) 0px,
+    rgba(0, 0, 0, 0.3) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 2;
+  margin-bottom: 4px;
+}
+
+.speakerBadge {
+  font-size: 0.72rem;
+  letter-spacing: 2px;
+  color: #ff3d71;
+  text-shadow: 0 0 8px rgba(255, 61, 113, 0.6);
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.speakerDot {
+  width: 7px;
+  height: 7px;
+  background: #00ff88;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #00ff88;
+  animation: blinkDot 1s infinite alternate;
+}
+
+@keyframes blinkDot {
+  from { opacity: 0.3; }
+  to { opacity: 1; }
+}
+
+.stepBadge {
+  font-size: 0.7rem;
+  color: #ffd700;
+  border: 1px solid rgba(255, 215, 0, 0.4);
+  padding: 1px 6px;
+  border-radius: 2px;
+  background: rgba(255, 215, 0, 0.1);
+}
+
+/* Texto em VERDE neon conforme solicitado */
+.messageText {
+  color: #00ff88;
+  font-size: 0.96rem;
+  line-height: 1.45;
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.45);
+  margin: auto 0;
+  z-index: 2;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.footerRow {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  z-index: 2;
+  margin-top: 4px;
+}
+
+.actionButton {
+  background: rgba(0, 255, 136, 0.15);
+  border: 1px solid #00ff88;
+  color: #00ff88;
+  font-family: 'Orbitron', 'Share Tech Mono', monospace;
+  font-size: 0.8rem;
+  font-weight: bold;
+  letter-spacing: 1.5px;
+  padding: 6px 16px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.25);
+}
+
+.actionButton:hover {
+  background: #00ff88;
+  color: #03070e;
+  box-shadow: 0 0 18px rgba(0, 255, 136, 0.7);
+  transform: translateY(-1px);
+}
+
+.actionButton:active {
+  transform: translateY(1px);
+}

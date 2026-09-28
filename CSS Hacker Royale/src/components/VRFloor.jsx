@@ -38,7 +38,7 @@ const sharedBorderGeometry = (() => {
   return new THREE.ShapeGeometry(shape);
 })();
 
-function FloorCell({ col, row, x, z, isOccupied, isHit, isPreview, waveHits = [], onTileClick }) {
+function FloorCell({ col, row, x, z, isOccupied, isHit, isPreview, highlight, waveHits = [], onTileClick, isSelected = false }) {
   const meshRef = useRef();
   const meshMatRef = useRef();
   const edgesMatRef = useRef();
@@ -66,13 +66,16 @@ function FloorCell({ col, row, x, z, isOccupied, isHit, isPreview, waveHits = []
       }
     }
 
-    const isElevated = isHit || isPreview || (isOccupied && isOccupied !== 'descending');
+    const isElevated = isHit || isPreview || !!highlight || isSelected || (isOccupied && isOccupied !== 'descending');
     const baseY = isElevated ? 0.2 : -0.01;
     const targetY = baseY + maxWaveY;
 
     const targetEdgeColor = new THREE.Color(
       isWaveActive ? '#f87171' :
+      isSelected ? '#00f0ff' :
       isHit ? '#f87171' :
+      highlight === 'yellow' ? '#ffd700' :
+      highlight === 'green' ? '#00ff66' :
       isOccupied === 'npc-targeted' ? '#2CFF05' :
       isOccupied === 'player' ? '#4ade80' :
       isOccupied === 'npc' ? '#f87171' :
@@ -83,7 +86,10 @@ function FloorCell({ col, row, x, z, isOccupied, isHit, isPreview, waveHits = []
 
     const targetBgColor = new THREE.Color(
       isWaveActive ? '#440000' :
+      isSelected ? '#061c30' :
       isHit ? '#440000' :
+      highlight === 'yellow' ? '#382800' :
+      highlight === 'green' ? '#003311' :
       isOccupied === 'npc-targeted' ? '#0d4a19' :
       isOccupied === 'player' ? '#003322' :
       isOccupied === 'npc' ? '#440000' :
@@ -94,7 +100,10 @@ function FloorCell({ col, row, x, z, isOccupied, isHit, isPreview, waveHits = []
 
     const targetEmissive = new THREE.Color(
       isWaveActive ? '#ff0000' :
+      isSelected ? '#00f0ff' :
       isHit ? '#ff0000' :
+      highlight === 'yellow' ? '#ffaa00' :
+      highlight === 'green' ? '#00ff66' :
       isOccupied === 'npc-targeted' ? '#2CFF05' :
       isOccupied === 'player' ? '#00ff88' :
       isOccupied === 'npc' ? '#ff3333' :
@@ -103,7 +112,15 @@ function FloorCell({ col, row, x, z, isOccupied, isHit, isPreview, waveHits = []
       '#000000'
     );
 
-    const targetIntensity = isWaveActive ? (0.4 + (maxWaveY / 0.55) * 0.8) : (isOccupied === 'npc-targeted' ? 1.2 : (isElevated ? 0.4 : 0));
+    const targetIntensity = isWaveActive
+      ? (0.4 + (maxWaveY / 0.55) * 0.8)
+      : isSelected
+      ? 0.9
+      : highlight === 'green'
+      ? 1.3
+      : highlight === 'yellow'
+      ? (0.7 + Math.sin(now * 0.006) * 0.3)
+      : (isOccupied === 'npc-targeted' ? 1.2 : (isElevated ? 0.4 : 0));
 
     if (meshRef.current) {
       meshRef.current.position.y = THREE.MathUtils.lerp(meshRef.current.position.y, targetY, delta * 12);
@@ -119,7 +136,15 @@ function FloorCell({ col, row, x, z, isOccupied, isHit, isPreview, waveHits = []
   });
 
   return (
-    <mesh ref={meshRef} position={[x, -0.01, z]} rotation={[-Math.PI / 2, 0, 0]} onClick={() => onTileClick && onTileClick(col, row)}>
+    <mesh
+      ref={meshRef}
+      position={[x, -0.01, z]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (onTileClick) onTileClick(col, row, e);
+      }}
+    >
       <planeGeometry args={[CELL_SIZE, CELL_SIZE]} />
       <meshStandardMaterial ref={meshMatRef} color={FLOOR_COLOR} emissive="#000000" emissiveIntensity={0} roughness={0.8} metalness={0.3} />
       <mesh geometry={sharedBorderGeometry} position={[0, 0, 0.003]}>
@@ -289,7 +314,7 @@ function FloatingIslandUnderside({ gridSize }) {
   );
 }
 
-export default function VRFloor({ occupiedTiles = [], hitTiles = [], previewTiles = [], waveHits = [], gridSize = 6, onTileClick }) {
+export default function VRFloor({ occupiedTiles = [], hitTiles = [], previewTiles = [], highlightTiles = [], waveHits = [], gridSize = 6, onTileClick, selectedTile = null }) {
   const halfGrid = (gridSize - 1) / 2;
   const totalSize = gridSize * CELL_SIZE;
   const halfTotal = totalSize / 2;
@@ -315,14 +340,18 @@ export default function VRFloor({ occupiedTiles = [], hitTiles = [], previewTile
         const occupant = occupiedTiles.find(t => t.col === c.col && t.row === c.row);
         const hitData = hitTiles.find(t => t.col === c.col && t.row === c.row);
         const previewData = previewTiles.find(t => t.col === c.col && t.row === c.row);
+        const highlightData = highlightTiles.find(t => t.col === c.col && t.row === c.row);
+        const isSelected = selectedTile && selectedTile.col === c.col && selectedTile.row === c.row;
 
         return <FloorCell
           key={c.key} col={c.col} row={c.row} x={c.x} z={c.z}
           isOccupied={occupant ? occupant.type : false}
           isHit={!!hitData}
           isPreview={previewData ? previewData.type : false}
+          highlight={highlightData ? highlightData.color : null}
           waveHits={waveHits}
           onTileClick={onTileClick}
+          isSelected={isSelected}
         />;
       })}
 

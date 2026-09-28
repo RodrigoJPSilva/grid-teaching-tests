@@ -8,6 +8,7 @@ import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { useGLTF, Outlines } from '@react-three/drei';
 import * as THREE from 'three';
+import { soundManager } from '../utils/SoundManager';
 
 // ── Modelo 3D da Cabeça Isolada com Rotação Y Contínua ────────
 function RotatingRobotHead() {
@@ -107,6 +108,8 @@ export default function LoadingScreen({
     const startTime = performance.now();
     let assetsConfirmed = false;
 
+    soundManager.startLoadingLoop();
+
     // Dispara o Fade In no próximo frame
     const enterRaf = requestAnimationFrame(() => {
       if (isMounted) setIsEntered(true);
@@ -158,6 +161,7 @@ export default function LoadingScreen({
         setDisplayPercent(100);
         if (!completedTriggered) {
           completedTriggered = true;
+          soundManager.playLoadingComplete();
           // Pausa sutil de 120ms em 100% para o usuário registrar a conclusão
           setTimeout(() => {
             if (!isMounted) return;
@@ -186,6 +190,7 @@ export default function LoadingScreen({
       cancelAnimationFrame(enterRaf);
       clearTimeout(opaqueTimer);
       cancelAnimationFrame(animId);
+      soundManager.stopLoadingLoop();
     };
   }, [minDuration, onComplete]);
 

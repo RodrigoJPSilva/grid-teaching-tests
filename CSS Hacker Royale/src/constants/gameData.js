@@ -66,7 +66,7 @@ export const ENEMIES_DATA = {
     hp: 100,
     maxHp: 100,
     position: [2, 4],
-    skin: '👾',
+    skin: '',
     revealed: false,
   },
   'enemy-flex-bravo': {
@@ -75,7 +75,7 @@ export const ENEMIES_DATA = {
     hp: 80,
     maxHp: 80,
     position: [4, 2],
-    skin: '🤖',
+    skin: '',
     revealed: false,
   },
   'enemy-recon-charlie': {
@@ -84,7 +84,7 @@ export const ENEMIES_DATA = {
     hp: 120,
     maxHp: 120,
     position: [5, 5],
-    skin: '💀',
+    skin: '',
     revealed: false,
   },
 };
@@ -103,7 +103,7 @@ export const WEAPONS = {
   sniper: {
     id: 'sniper',
     name: 'Sniper de Grid',
-    emoji: '🎯',
+    emoji: '',
     cssProperty: 'grid-area',
     description: 'Mira exata numa célula. Alto dano, requer precisão.',
     damage: 60,
@@ -114,7 +114,7 @@ export const WEAPONS = {
   bombs: {
     id: 'bombs',
     name: 'Bomba Flex',
-    emoji: '💣',
+    emoji: '',
     cssProperty: 'flex-grow',
     description: 'Expande por flex-grow. Dano em área 2x2.',
     damage: 30,
@@ -125,7 +125,7 @@ export const WEAPONS = {
   laser: {
     id: 'laser',
     name: 'Laser de Span',
-    emoji: '⚡',
+    emoji: '',
     cssProperty: 'grid-column / grid-row span',
     description: 'Atravessa toda a linha ou coluna selecionada.',
     damage: 20,
@@ -146,9 +146,9 @@ export const VALID_COMMANDS = ['dir', 'cd', '..', 'code .', 'sonar', 'help', 'cl
 export const BOOT_MESSAGES = [
   { text: '> Inicializando GRID BATTLEGROUNDS v3.0...', delay: 0 },
   { text: '> Carregando módulos de combate...', delay: 300 },
-  { text: '> Arena Grid [6x6] — ONLINE ✓', delay: 600 },
-  { text: '> Sistemas de armas — ONLINE ✓', delay: 900 },
-  { text: '> Sonar Hacker [Alt+F] — STANDBY ⚡', delay: 1200 },
+  { text: '> Arena Grid [6x6] — ONLINE', delay: 600 },
+  { text: '> Sistemas de armas — ONLINE', delay: 900 },
+  { text: '> Sonar Hacker [Alt+F] — STANDBY', delay: 1200 },
   { text: '> 3 adversários detectados no filesystem...', delay: 1500 },
   { text: '> ██████████████████████ 100%', delay: 1800 },
   { text: '> SISTEMA PRONTO. Bom combate, Hacker.', delay: 2100 },

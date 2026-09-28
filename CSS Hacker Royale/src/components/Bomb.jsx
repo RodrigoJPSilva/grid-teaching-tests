@@ -1,10 +1,11 @@
 import React, { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { soundManager } from '../utils/SoundManager';
 
 const MAX_TRAIL_POINTS = 24;
 
-export default function Bomb({ startPos, endPos, startTime, duration = 5000, shooterType = 'player' }) {
+export default function Bomb({ startPos, endPos, startTime, duration = 5000, shooterType = 'player', onImpact }) {
   const bombGroup = useRef();
   const materialRef = useRef();
   const ribbonMeshRef = useRef();
@@ -18,6 +19,19 @@ export default function Bomb({ startPos, endPos, startTime, duration = 5000, sho
   const baseStartColor = useMemo(() => new THREE.Color(shooterType === 'player' ? '#00ff88' : '#ff0040'), [shooterType]);
   const yellowColor = useMemo(() => new THREE.Color('#ffff00'), []);
   const currentColor = useMemo(() => new THREE.Color(shooterType === 'player' ? '#00ff88' : '#ff0040'), [shooterType]);
+
+  // Triggers de áudio e impacto sincronizados
+  const ticksPlayed = useRef(new Set());
+  const lastBeepPlayed = useRef(false);
+  const diveSoundPlayed = useRef(false);
+  const impactTriggered = useRef(false);
+
+  useEffect(() => {
+    ticksPlayed.current.clear();
+    lastBeepPlayed.current = false;
+    diveSoundPlayed.current = false;
+    impactTriggered.current = false;
+  }, [startTime]);
 
   // Buffer de posições para o Ribbon Trail
   const trailPositions = useRef([]);
@@ -35,34 +49,133 @@ export default function Bomb({ startPos, endPos, startTime, duration = 5000, sho
     if (!bombGroup.current || !startTime) return;
 
     const elapsed = Date.now() - startTime;
-    const t = Math.min(Math.max(elapsed / duration, 0), 1);
 
-    // 1. Transição contínua de cor da cor base para Amarelo
-    currentColor.copy(baseStartColor).lerp(yellowColor, t);
-    if (materialRef.current) {
-      materialRef.current.color.copy(currentColor);
-      materialRef.current.emissive.copy(currentColor);
-      materialRef.current.emissiveIntensity = 0.6 + t * 1.4;
+    if (shooterType === 'player') {
+      // ════════════════════════════════════════════════════════════════
+      // BOMBA DO JOGADOR: 3 FASES (3.3s subida, 0.7s mira/flash, 1.0s mergulho)
+      // Dano/impacto antecipado em 0.5s antes do fim da animação (aos 4.5s)
+      // ════════════════════════════════════════════════════════════════
+
+      // Tiques normais de contagem aos 0s, 1s, 2s, 3s
+      [0, 1000, 2000, 3000].forEach((tickMs) => {
+        if (elapsed >= tickMs && elapsed < 3300 && !ticksPlayed.current.has(tickMs)) {
+          ticksPlayed.current.add(tickMs);
+          soundManager.playBombBeep();
+        }
+      });
+
+      if (elapsed < 3300) {
+        // ── Fase 1: Subida mais lenta ficando amarela (0.0s a 3.3s) ──
+        const p1 = Math.min(elapsed / 3300, 1.0);
+        currentColor.copy(baseStartColor).lerp(yellowColor, p1);
+        if (materialRef.current) {
+          materialRef.current.color.copy(currentColor);
+          materialRef.current.emissive.copy(currentColor);
+          materialRef.current.emissiveIntensity = 0.6 + p1 * 0.8;
+        }
+
+        // Sobe em direção ao ponto vertical alto diretamente sobre o alvo
+        const currX = THREE.MathUtils.lerp(vStart.x, vEnd.x, p1);
+        const currZ = THREE.MathUtils.lerp(vStart.z, vEnd.z, p1);
+        const currY = THREE.MathUtils.lerp(vStart.y, 5.0, Math.sin(p1 * Math.PI * 0.5));
+        bombGroup.current.position.set(currX, currY, currZ);
+
+        bombGroup.current.rotation.x = p1 * Math.PI * 4;
+        bombGroup.current.rotation.y = p1 * Math.PI * 2;
+        bombGroup.current.rotation.z = 0;
+
+        const currentScale = THREE.MathUtils.lerp(0.2, 1, Math.min(p1 * 1.5, 1));
+        bombGroup.current.scale.set(currentScale, currentScale, currentScale);
+      } else if (elapsed < 4000) {
+        // ── Fase 2: Olha para o alvo + piscada em branco + último tic diferenciado (3.3s a 4.0s - 0.7s) ──
+        if (!lastBeepPlayed.current) {
+          lastBeepPlayed.current = true;
+          soundManager.playBombLastBeep();
+        }
+
+        const p2 = (elapsed - 3300) / 700;
+        bombGroup.current.position.set(vEnd.x, 5.0, vEnd.z);
+
+        // Olha direto para o alvo abaixo
+        bombGroup.current.rotation.set(Math.PI / 2, 0, 0);
+
+        // Leve piscada em branco sincronizada com o último tic
+        const flash = Math.sin(p2 * Math.PI);
+        const whiteColor = new THREE.Color('#ffffff');
+        currentColor.copy(yellowColor).lerp(whiteColor, flash * 0.85);
+
+        if (materialRef.current) {
+          materialRef.current.color.copy(currentColor);
+          materialRef.current.emissive.copy(currentColor);
+          materialRef.current.emissiveIntensity = 1.2 + flash * 1.6;
+        }
+        bombGroup.current.scale.set(1, 1, 1);
+      } else {
+        // ── Fase 3: Desce com tudo em linha reta + som de preparar para o impacto (4.0s a 5.0s - 1.0s) ──
+        if (!diveSoundPlayed.current) {
+          diveSoundPlayed.current = true;
+          soundManager.playBombDive();
+        }
+
+        const p3 = Math.min((elapsed - 4000) / 1000, 1.0);
+
+        if (p3 <= 0.5) {
+          // De 4.0s a 4.5s: Desce acelerando em linha reta até o chão
+          const u = p3 / 0.5; // 0 to 1
+          const accel = u * u; // Aceleração com tudo
+          const currY = THREE.MathUtils.lerp(5.0, 0.0, accel);
+          bombGroup.current.position.set(vEnd.x, currY, vEnd.z);
+        } else {
+          // De 4.5s a 5.0s: Atravessa o piso e colapsa na cratera
+          const v = (p3 - 0.5) / 0.5;
+          const currY = -v * 1.6;
+          bombGroup.current.position.set(vEnd.x, currY, vEnd.z);
+          const collapseScale = Math.max(0, 1.0 - v * 1.2);
+          bombGroup.current.scale.set(collapseScale, collapseScale, collapseScale);
+        }
+
+        // Impacto e dano aos 4.5s (0.5s antes de completar a animação total de 5s)
+        if (elapsed >= 4500 && !impactTriggered.current) {
+          impactTriggered.current = true;
+          if (onImpact) onImpact();
+        }
+
+        bombGroup.current.rotation.set(Math.PI / 2, 0, 0);
+
+        if (materialRef.current) {
+          materialRef.current.color.set('#ffff00');
+          materialRef.current.emissive.set('#ffff00');
+          materialRef.current.emissiveIntensity = 1.8;
+        }
+      }
+    } else {
+      // ════════════════════════════════════════════════════════════════
+      // BOMBAS DE INIMIGOS: Trajetória parabólica padrão
+      // ════════════════════════════════════════════════════════════════
+      const t = Math.min(Math.max(elapsed / duration, 0), 1);
+
+      currentColor.copy(baseStartColor).lerp(yellowColor, t);
+      if (materialRef.current) {
+        materialRef.current.color.copy(currentColor);
+        materialRef.current.emissive.copy(currentColor);
+        materialRef.current.emissiveIntensity = 0.6 + t * 1.4;
+      }
+
+      bombGroup.current.position.lerpVectors(vStart, vEnd, t);
+      const maxHeight = 4;
+      bombGroup.current.position.y += Math.sin(t * Math.PI) * maxHeight;
+
+      if (t > 0.85) {
+        const plungeProgress = (t - 0.85) / 0.15;
+        bombGroup.current.position.y -= plungeProgress * 2.2;
+      }
+
+      bombGroup.current.rotation.x = t * Math.PI * 6;
+      bombGroup.current.rotation.y = t * Math.PI * 3;
+
+      const currentScale = THREE.MathUtils.lerp(0.2, 1, Math.min(t * 1.5, 1));
+      bombGroup.current.scale.set(currentScale, currentScale, currentScale);
     }
-
-    // 2. Trajetória parabólica
-    bombGroup.current.position.lerpVectors(vStart, vEnd, t);
-    const maxHeight = 4;
-    bombGroup.current.position.y += Math.sin(t * Math.PI) * maxHeight;
-
-    // 3. Atravessar o piso completamente ao chegar no alvo (t >= 0.85)
-    if (t > 0.85) {
-      const plungeProgress = (t - 0.85) / 0.15;
-      bombGroup.current.position.y -= plungeProgress * 2.2;
-    }
-
-    // Rotação no ar
-    bombGroup.current.rotation.x = t * Math.PI * 6;
-    bombGroup.current.rotation.y = t * Math.PI * 3;
-
-    // Scale pop inflates from 0.2 to 1 while travelling
-    const currentScale = THREE.MathUtils.lerp(0.2, 1, Math.min(t * 1.5, 1));
-    bombGroup.current.scale.set(currentScale, currentScale, currentScale);
 
     // 4. Gravação e atualização do Ribbon Trail
     const currentPos = bombGroup.current.position.clone();

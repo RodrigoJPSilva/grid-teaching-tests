@@ -11,7 +11,6 @@ import VRFloor from './VRFloor';
 import VoxelEnemy from './VoxelEnemy';
 import Player from './Player';
 import Bomb, { BombArea } from './Bomb';
-import ArenaTV from './ArenaTV';
 import { soundManager } from '../utils/SoundManager';
 
 function LightBootSequence() {
@@ -204,6 +203,8 @@ export default function Arena3D({
   cameraMode = '3D',
   tutorialStep = 0,
   currentLevel = 1,
+  highlightTiles = [],
+  selectedTile = null,
 }) {
   const [playerDamageTrigger, setPlayerDamageTrigger] = useState(0);
   const prevPlayerHp = useRef(playerHp);
@@ -255,8 +256,10 @@ export default function Arena3D({
   const previewBombaPos3D = previewState?.bomba ? gridToPosition3D(previewState.bomba.col, previewState.bomba.row, arenaSize) : null;
   const previewSniperPos3D = previewState?.sniper ? gridToPosition3D(previewState.sniper.col, previewState.sniper.row, arenaSize) : null;
 
-  const enemiesInRoom = Object.values(enemies).filter(e => e.hp > 0);
-  const bossEnemy = enemiesInRoom.find(e => e.type === 'boss');
+  const allEnemies = Object.values(enemies);
+  const enemiesInRoom = allEnemies.filter(e => e.hp > 0);
+  const bossEnemies = enemiesInRoom.filter(e => e.type === 'boss');
+  const bossEnemy = bossEnemies[0];
 
   // ── Sequência Cinemática de Introdução do Boss ──────────────
   const [bossIntroPhase, setBossIntroPhase] = useState(null);
@@ -269,6 +272,9 @@ export default function Arena3D({
   // Iniciar sequência do Boss quando ele surge
   useEffect(() => {
     if (!bossEnemy) {
+      if (bossIntroStartedRef.current) {
+        soundManager.startBattleMusic();
+      }
       bossIntroStartedRef.current = false;
       setBossIntroPhase(null);
       setBossScale(1);
@@ -278,6 +284,7 @@ export default function Arena3D({
 
     if (bossEnemy.isIntroActive && !bossIntroStartedRef.current) {
       bossIntroStartedRef.current = true;
+      soundManager.startBossMusic();
       if (difficulty === 'Matrix') {
         setBossIntroPhase('waiting_player');
         bossPhaseTimerRef.current = Date.now();
@@ -322,8 +329,8 @@ export default function Arena3D({
         if (elapsed >= 500) {
           setBossIntroPhase('boss_descent');
           bossPhaseTimerRef.current = now;
-          if (bossEnemy && triggerBossDescent) {
-            triggerBossDescent(bossEnemy.id, now);
+          if (bossEnemies.length > 0 && triggerBossDescent) {
+            bossEnemies.forEach(b => triggerBossDescent(b.id, now));
           }
         }
       } else if (bossIntroPhase === 'boss_descent') {
@@ -331,6 +338,7 @@ export default function Arena3D({
         if (elapsed >= 2000) {
           setBossIntroPhase('mario_growth');
           bossPhaseTimerRef.current = now;
+          soundManager.playPowerUp();
         }
       } else if (bossIntroPhase === 'mario_growth') {
         // 0.7s de crescimento piscando pequeno/grande estilo Super Mario World
@@ -366,15 +374,15 @@ export default function Arena3D({
           if (onBossIntroChange) {
             onBossIntroChange({ letterbox: false, showHp: true, hpFillPercent: undefined, isIntroActive: false });
           }
-          if (bossEnemy && completeBossIntro) {
-            completeBossIntro(bossEnemy.id);
+          if (bossEnemies.length > 0 && completeBossIntro) {
+            bossEnemies.forEach(b => completeBossIntro(b.id));
           }
         }
       }
     }, 40);
 
     return () => clearInterval(interval);
-  }, [bossIntroPhase, playerSpawnTime, bossEnemy, triggerBossDescent, completeBossIntro, onBossIntroChange]);
+  }, [bossIntroPhase, playerSpawnTime, bossEnemy, bossEnemies, triggerBossDescent, completeBossIntro, onBossIntroChange]);
 
   const bossPos3D = useMemo(() => {
     if (!bossEnemy) return null;
@@ -407,16 +415,24 @@ export default function Arena3D({
   useEffect(() => {
     if (bombCountdown > 0) {
       wasCounting.current = true;
-      soundManager.playBombBeep();
     }
     if (wasCounting.current && bombCountdown === 0) {
       wasCounting.current = false;
-      if (gameState.bomba) {
-        setWaveHits(prev => [...prev, { col: gameState.bomba.col, row: gameState.bomba.row, time: Date.now() }]);
-        soundManager.playExplosion();
-      }
     }
-  }, [bombCountdown, gameState.bomba]);
+  }, [bombCountdown]);
+
+  const getIsTileElevated = (col, row) => {
+    const isHit = hitEffects.some(h => h.col === col && h.row === row);
+    const isWave = waveHits.some(w => {
+      const dist = Math.hypot(col - w.col, row - w.row);
+      const elapsed = Date.now() - w.time;
+      return dist <= (w.radius || 1.5) && elapsed < 650;
+    });
+    const isHighlight = highlightTiles.some(h => h.col === col && h.row === row);
+    const isSel = selectedTile && selectedTile.col === col && selectedTile.row === row;
+    const isPrev = previewTiles.some(p => p.col === col && p.row === row);
+    return isHit || isWave || isHighlight || isSel || isPrev;
+  };
 
   // Impacto em onda das bombas inimigas
   const enemyBombImpacted = useRef(new Set());
@@ -550,18 +566,15 @@ export default function Arena3D({
 
       <LightBootSequence />
 
-      <VRFloor occupiedTiles={occupiedTiles} hitTiles={hitTiles} previewTiles={previewTiles} waveHits={waveHits} gridSize={arenaSize} onTileClick={onTileClick} />
-
-      {/* Televisão 3D na Arena (Tutorial, HUD e Alerta de Perigo) */}
-      <ArenaTV
-        cameraMode={cameraMode}
+      <VRFloor
+        occupiedTiles={occupiedTiles}
+        hitTiles={hitTiles}
+        previewTiles={previewTiles}
+        highlightTiles={highlightTiles}
+        waveHits={waveHits}
         gridSize={arenaSize}
-        tutorialStep={tutorialStep}
-        isWarningActive={bossIntroPhase === 'perigo_warning'}
-        playerHp={playerHp}
-        enemiesCount={enemiesInRoom.length}
-        currentLevel={currentLevel}
-        difficulty={difficulty}
+        onTileClick={onTileClick}
+        selectedTile={selectedTile}
       />
 
       <group>
@@ -576,18 +589,25 @@ export default function Arena3D({
           spawnTime={playerSpawnTime}
           onLanded={handlePlayerLanded}
           isAwaitingSpawn={playerSpawnTime === 0 || now < playerSpawnTime}
+          isDead={playerHp <= 0}
+          isFloorElevated={getIsTileElevated(gameState.player.col, gameState.player.row)}
         />
       </group>
 
       <group>
-        {enemiesInRoom.map(enemy => (
+        {allEnemies.map(enemy => (
           <VoxelEnemy
             key={enemy.id}
             enemy={enemy}
             arenaSize={arenaSize}
             onLanded={() => handleEnemyLanded(enemy)}
-            isAwaitingSpawn={enemy.type === 'boss' ? (bossIntroPhase === 'waiting_player' || bossIntroPhase === 'zoom_in' || (!bossIntroPhase && (enemy.spawnTime === 0 || now < enemy.spawnTime))) : (enemy.spawnTime === 0 || now < enemy.spawnTime)}
+            isAwaitingSpawn={
+              enemy.type === 'boss'
+                ? (!bossIntroPhase || bossIntroPhase === 'waiting_player' || bossIntroPhase === 'perigo_warning' || bossIntroPhase === 'zoom_in' || (enemy.spawnTime === 0 || now < enemy.spawnTime))
+                : (enemy.spawnTime === 0 || now < enemy.spawnTime)
+            }
             scaleOverride={enemy.type === 'boss' ? bossScale : null}
+            isFloorElevated={getIsTileElevated(enemy.position[1], enemy.position[0])}
           />
         ))}
       </group>
@@ -632,8 +652,14 @@ export default function Arena3D({
           startPos={[throwerPosRef.current[0] + 0.28, 0.8, throwerPosRef.current[2]]}
           endPos={bombaPos3D}
           startTime={bombThrowTrigger + 200}
-          duration={4800}
+          duration={5000}
           shooterType="player"
+          onImpact={() => {
+            if (gameState.bomba) {
+              setWaveHits(prev => [...prev, { col: gameState.bomba.col, row: gameState.bomba.row, time: Date.now() }]);
+              soundManager.playExplosion();
+            }
+          }}
         />
       )}
 

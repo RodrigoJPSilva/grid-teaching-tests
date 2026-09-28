@@ -17,6 +17,8 @@ export default function Player({
   spawnTime = 0,
   onLanded = null,
   isAwaitingSpawn = false,
+  isDead = false,
+  isFloorElevated = false,
 }) {
   return (
     <RobotModel
@@ -32,6 +34,8 @@ export default function Player({
       spawnTime={spawnTime}
       onLanded={onLanded}
       isAwaitingSpawn={isAwaitingSpawn}
+      isDead={isDead}
+      isFloorElevated={isFloorElevated}
     />
   );
 }

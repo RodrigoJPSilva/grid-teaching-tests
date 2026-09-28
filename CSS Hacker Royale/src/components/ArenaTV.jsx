@@ -304,7 +304,7 @@ export default function ArenaTV({
                 fontWeight: 'bold',
                 marginBottom: '8px'
               }}>
-                ★ DICAS CONCLUÍDAS! ★
+                [ DICAS CONCLUÍDAS ]
               </div>
 
               <div style={{
@@ -366,7 +366,12 @@ export default function ArenaTV({
                   borderRadius: '3px',
                   borderLeft: '4px solid #00ff88'
                 }}>
-                  <span style={{ fontSize: '13px', color: '#00ff88', fontWeight: 'bold' }}>♥ HP JOGADOR</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#00ff88', fontWeight: 'bold' }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                    </svg>
+                    HP JOGADOR
+                  </span>
                   <span style={{ fontSize: '16px', color: '#ffffff', fontWeight: 'bold' }}>{playerHp} / 3</span>
                 </div>
 
@@ -379,7 +384,14 @@ export default function ArenaTV({
                   borderRadius: '3px',
                   borderLeft: '4px solid #ff3355'
                 }}>
-                  <span style={{ fontSize: '13px', color: '#ff5577', fontWeight: 'bold' }}>💀 INIMIGOS VIVOS</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#ff5577', fontWeight: 'bold' }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="9" />
+                      <line x1="9" y1="9" x2="15" y2="15" />
+                      <line x1="15" y1="9" x2="9" y2="15" />
+                    </svg>
+                    INIMIGOS VIVOS
+                  </span>
                   <span style={{ fontSize: '16px', color: '#ffffff', fontWeight: 'bold' }}>{enemiesCount}</span>
                 </div>
               </div>

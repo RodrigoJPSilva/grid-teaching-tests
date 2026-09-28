@@ -32,8 +32,8 @@ export function parsePlayerCode(inputString) {
     if (!match) return null;
 
     const block = match[1];
-    const colMatch = block.match(/grid-column:\s*(\d+)/i);
-    const rowMatch = block.match(/grid-row:\s*(\d+)/i);
+    const colMatch = block.match(/(?:grid-)?column:\s*(\d+)/i);
+    const rowMatch = block.match(/(?:grid-)?row:\s*(\d+)/i);
 
     return {
       col: colMatch ? parseInt(colMatch[1], 10) : null,
