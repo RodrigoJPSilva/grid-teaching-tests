@@ -49,6 +49,7 @@ export default function App() {
   }); // 'radial' | 'code'
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [gridSize, setGridSize] = useState(10);
+  const [isCameraCentered, setIsCameraCentered] = useState(false);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -58,6 +59,9 @@ export default function App() {
         (window.matchMedia && window.matchMedia('(pointer: coarse)').matches)
       );
       setIsMobile(touch);
+      if (typeof document !== 'undefined') {
+        document.body.classList.toggle('is-mobile-device', touch);
+      }
       if (touch) {
         setInputMode('radial');
         setIsEditorVisible(false);
@@ -531,26 +535,10 @@ export default function App() {
           )}
 
           {/* HUD Superior (Vidas / Inimigos / Fase) no Canto Superior Direito */}
-          <div style={{
-            position: 'absolute',
-            top: '20px',
-            right: '20px',
-            zIndex: 100,
-            display: 'flex',
-            gap: '20px',
-            color: '#00ddaa',
-            fontFamily: 'monospace',
-            fontSize: '18px',
-            background: 'rgba(0,0,0,0.78)',
-            border: '1px solid rgba(255, 255, 255, 0.45)',
-            boxShadow: '0 0 12px rgba(255, 255, 255, 0.15)',
-            padding: '10px 20px',
-            borderRadius: '4px',
-            alignItems: 'center'
-          }}>
+          <div className="top-game-hud">
             <div>{t('playerHp', language)} {gameState.playerHp}/3</div>
             <div>{t('enemiesAlive', language)} {Object.values(gameState.enemies).filter(e => e.hp > 0).length}</div>
-            <div style={{ color: '#fff', fontSize: '14px', marginLeft: '10px' }}>
+            <div className="top-game-hud-level">
               [{t('level', language)} {gameState.currentLevel} - {gameState.difficulty === 'Facil' ? t('easy', language) : gameState.difficulty === 'Normal' ? t('normal', language) : t('matrix', language)}]
             </div>
           </div>
@@ -690,6 +678,22 @@ export default function App() {
                   >
                     {t('cameraFree', language)}
                   </button>
+                  <button
+                    type="button"
+                    className={`camera-btn recenter-camera-btn ${isCameraCentered ? 'active' : ''}`}
+                    onClick={() => { soundManager.playUIClick(); setIsCameraCentered(v => !v); }}
+                    title={t('recenterCamera', language)}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '3px' }}>
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="22" y1="12" x2="18" y2="12" />
+                      <line x1="6" y1="12" x2="2" y2="12" />
+                      <line x1="12" y1="6" x2="12" y2="2" />
+                      <line x1="12" y1="22" x2="12" y2="18" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                    {t('recenterCamera', language)}
+                  </button>
                 </div>
               </div>
             </div>
@@ -724,6 +728,22 @@ export default function App() {
                     title={t('cameraFree', language)}
                   >
                     {t('cameraFree', language)}
+                  </button>
+                  <button
+                    type="button"
+                    className={`camera-btn recenter-camera-btn ${isCameraCentered ? 'active' : ''}`}
+                    onClick={() => { soundManager.playUIClick(); setIsCameraCentered(v => !v); }}
+                    title={t('recenterCamera', language)}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '3px' }}>
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="22" y1="12" x2="18" y2="12" />
+                      <line x1="6" y1="12" x2="2" y2="12" />
+                      <line x1="12" y1="6" x2="12" y2="2" />
+                      <line x1="12" y1="22" x2="12" y2="18" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                    {t('recenterCamera', language)}
                   </button>
                 </div>
                 {!isMobile && (
@@ -765,6 +785,9 @@ export default function App() {
               highlightTiles={tutorialHighlightTiles}
               activePlayerBomb={activePlayerBomb}
               speedMultiplier={inputMode === 'radial' ? 2 : 1}
+              isMobile={isMobile}
+              isCameraCentered={isCameraCentered}
+              setIsCameraCentered={setIsCameraCentered}
             />
 
             {/* ── BLOCO DE CONVERSA DO PERSONAGEM (Substituindo a TV) ── */}

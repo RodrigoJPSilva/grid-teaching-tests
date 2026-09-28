@@ -215,40 +215,35 @@ export default function DemoArena({ type, onClose, onSwitch }) {
   ];
 
   return (
-    <div className="demo-overlay" style={{
-      position: 'absolute', top:0, left:0, right:0, bottom:0,
-      backgroundColor: `rgba(3,6,10,${1 - opacity})`,
-      transition: 'background-color 0.1s',
-      zIndex: 1000, display: 'flex'
-    }}>
-      <div style={{ padding: '20px', background: '#03060a', width: '320px', borderRight: '1px solid #1a2332', display: 'flex', flexDirection: 'column' }}>
-        <h2 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '20px' }}>Demonstração</h2>
+    <div className="demo-overlay demo-arena-root">
+      <div className="demo-sidebar">
+        <h2 className="demo-header-title">Demonstração</h2>
         
-        <div style={{ color: '#00ffcc', fontWeight: 'bold' }}>Habilidade Ativa:</div>
-        <div style={{ color: '#fff', fontSize: '1.5rem', marginTop: '5px', textTransform: 'uppercase' }}>{type}</div>
+        <div className="demo-skill-label">Habilidade Ativa:</div>
+        <div className="demo-skill-name">{type}</div>
         
-        <p style={{ color: '#aaa', fontSize: '0.9rem', marginTop: '15px', lineHeight: '1.4' }}>
+        <p className="demo-desc">
           {description}
         </p>
 
-        <div style={{ marginTop: '20px', background: '#050a12', padding: '15px', borderRadius: '4px', border: '1px solid #1a2332' }}>
-          <pre style={{ color: '#00ddaa', margin: 0, fontSize: '0.9rem', fontFamily: 'monospace' }}>
+        <div className="demo-code-container">
+          <pre className="demo-code">
             {dynamicCode}
           </pre>
         </div>
 
-        <div style={{ flex: 1 }} />
+        <div className="demo-spacer" />
 
-        <div style={{ borderTop: '1px solid #1a2332', paddingTop: '20px' }}>
-          <h3 style={{ color: '#fff', fontSize: '1rem', marginBottom: '10px' }}>Outras Demonstrações:</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {type !== 'teleport' && <button className="action-btn" onClick={() => onSwitch('teleport')}>Teletransporte</button>}
-            {type !== 'bomb' && <button className="action-btn" onClick={() => onSwitch('bomb')}>Bomba</button>}
-            {type !== 'sniper' && <button className="action-btn" onClick={() => onSwitch('sniper')}>Sniper</button>}
+        <div className="demo-switch-section">
+          <h3 className="demo-switch-title">Outras Demonstrações:</h3>
+          <div className="demo-switch-btn-stack">
+            {type !== 'teleport' && <button className="action-btn demo-btn" onClick={() => onSwitch('teleport')}>Teletransporte</button>}
+            {type !== 'bomb' && <button className="action-btn demo-btn" onClick={() => onSwitch('bomb')}>Bomba</button>}
+            {type !== 'sniper' && <button className="action-btn demo-btn" onClick={() => onSwitch('sniper')}>Sniper</button>}
           </div>
         </div>
         
-        <button className="action-btn" onClick={onClose} style={{ marginTop: '20px', background: '#BC0001', color: 'white' }}>VOLTAR AO MENU</button>
+        <button className="action-btn demo-back-btn" onClick={onClose}>VOLTAR AO MENU</button>
       </div>
       
       <div style={{ flex: 1, position: 'relative', background: '#03060a' }}>

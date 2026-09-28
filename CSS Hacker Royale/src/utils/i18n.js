@@ -80,6 +80,7 @@ export const TRANSLATIONS = {
     camera3D: '3D',
     camera2D: '2D',
     cameraFree: 'LIVRE',
+    recenterCamera: 'Recentralizar Câmera',
     showEditorBtn: 'MOSTRAR EDITOR CSS',
     hideEditorBtn: 'OCULTAR EDITOR',
 
@@ -178,6 +179,7 @@ export const TRANSLATIONS = {
     camera3D: '3D',
     camera2D: '2D',
     cameraFree: 'FREE',
+    recenterCamera: 'Recenter Camera',
     showEditorBtn: 'SHOW CSS EDITOR',
     hideEditorBtn: 'HIDE EDITOR',
 
@@ -276,6 +278,7 @@ export const TRANSLATIONS = {
     camera3D: '3D',
     camera2D: '2D',
     cameraFree: 'LIBRE',
+    recenterCamera: 'Recentrar Cámara',
     showEditorBtn: 'MOSTRAR EDITOR CSS',
     hideEditorBtn: 'OCULTAR EDITOR',
 

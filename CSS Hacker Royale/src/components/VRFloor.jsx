@@ -142,6 +142,7 @@ function FloorCell({ col, row, x, z, isOccupied, isHit, isPreview, highlight, wa
       rotation={[-Math.PI / 2, 0, 0]}
       onClick={(e) => {
         e.stopPropagation();
+        if (typeof window !== 'undefined' && window.__mobileCameraDragged) return;
         if (onTileClick) onTileClick(col, row, e);
       }}
     >

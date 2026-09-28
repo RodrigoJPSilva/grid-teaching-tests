@@ -1511,52 +1511,417 @@ kbd {
   box-shadow: 0 0 20px rgba(0, 240, 255, 0.7);
 }
 
-/* ── Otimizações para Mobile Horizontal (Landscape) ── */
-@media (max-height: 600px) and (orientation: landscape) {
+/* ── Demonstração de Habilidades (DemoArena) ── */
+.demo-arena-root {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #03060a;
+  z-index: 1000;
+  display: flex;
+}
+
+.demo-sidebar {
+  padding: 20px;
+  background: #03060a;
+  width: 320px;
+  border-right: 1px solid #1a2332;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.demo-header-title {
+  color: #fff;
+  font-size: 1.2rem;
+  margin-bottom: 16px;
+  font-family: 'Orbitron', monospace;
+  letter-spacing: 1px;
+}
+
+.demo-skill-label {
+  color: #00ffcc;
+  font-weight: bold;
+  font-size: 0.9rem;
+  font-family: 'Share Tech Mono', monospace;
+}
+
+.demo-skill-name {
+  color: #fff;
+  font-size: 1.5rem;
+  margin-top: 4px;
+  text-transform: uppercase;
+  font-family: 'Orbitron', monospace;
+  letter-spacing: 2px;
+}
+
+.demo-desc {
+  color: #aaa;
+  font-size: 0.88rem;
+  margin-top: 12px;
+  line-height: 1.4;
+  font-family: 'Share Tech Mono', monospace;
+}
+
+.demo-code-container {
+  margin-top: 16px;
+  background: #050a12;
+  padding: 14px;
+  border-radius: 4px;
+  border: 1px solid #1a2332;
+}
+
+.demo-code {
+  color: #00ddaa;
+  margin: 0;
+  font-size: 0.88rem;
+  font-family: monospace;
+}
+
+.demo-spacer {
+  flex: 1;
+  min-height: 10px;
+}
+
+.demo-switch-section {
+  border-top: 1px solid #1a2332;
+  padding-top: 16px;
+}
+
+.demo-switch-title {
+  color: #fff;
+  font-size: 0.95rem;
+  margin-bottom: 10px;
+  font-family: 'Orbitron', monospace;
+}
+
+.demo-switch-btn-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.demo-btn {
+  padding: 8px 12px;
+  font-size: 0.85rem;
+}
+
+.demo-back-btn {
+  margin-top: 16px;
+  background: #BC0001 !important;
+  color: white !important;
+  border: 1px solid #ff3333 !important;
+  padding: 10px 14px;
+  font-family: 'Orbitron', monospace;
+  font-weight: bold;
+}
+
+/* ── HUD de Partida Superior Direito ── */
+.top-game-hud {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 100;
+  display: flex;
+  gap: 20px;
+  color: #00ddaa;
+  font-family: monospace;
+  font-size: 18px;
+  background: rgba(0, 0, 0, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.15);
+  padding: 10px 20px;
+  border-radius: 4px;
+  align-items: center;
+}
+
+.top-game-hud-level {
+  color: #fff;
+  font-size: 14px;
+  margin-left: 10px;
+}
+
+.recenter-camera-btn {
+  transition: all 0.2s ease;
+}
+
+.recenter-camera-btn.active {
+  background: rgba(0, 240, 255, 0.22) !important;
+  border-color: #00f0ff !important;
+  color: #00f0ff !important;
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.6) !important;
+}
+
+/* ── Otimizações Exclusivas para Versão Mobile (Landscape & Telas Baixas) ── */
+@media (max-height: 620px), (pointer: coarse) and (orientation: landscape), (max-width: 950px) and (orientation: landscape) {
   html, body, #root, .itb-menu-root, .app-root {
     height: 100dvh;
     min-height: 100dvh;
   }
 
+  /* Sidebar do Menu Principal */
   .itb-menu-sidebar {
-    padding: 18px 24px;
-    width: 360px;
-    justify-content: center;
-    gap: 12px;
+    padding: 10px 16px;
+    width: min(390px, 48vw);
+    justify-content: space-between;
+    gap: 4px;
+    box-sizing: border-box;
   }
 
-  .itb-hero-title {
-    font-size: 1.35rem;
+  .itb-title-section {
     margin-bottom: 2px;
   }
 
-  .itb-hero-tagline {
+  .itb-logo-title {
+    line-height: 0.9;
+  }
+
+  .itb-logo-outline {
+    font-size: 1.45rem;
+    letter-spacing: 1.5px;
+    text-shadow: -1px -1px 0 #182836, 1px -1px 0 #182836, -1px 1px 0 #182836, 1px 1px 0 #182836, 0 0 10px rgba(0, 240, 255, 0.4);
+  }
+
+  .itb-logo-fill {
+    font-size: 1.15rem;
+    letter-spacing: 1.5px;
+    text-shadow: -1px -1px 0 #0d1a24, 1px -1px 0 #0d1a24, -1px 1px 0 #0d1a24, 1px 1px 0 #0d1a24, 0 0 12px rgba(0, 240, 255, 0.7);
+  }
+
+  .itb-subtitle {
+    margin-top: 3px;
+    gap: 8px;
+  }
+
+  .itb-badge {
+    font-size: 0.62rem;
+    padding: 1px 6px;
+    letter-spacing: 1px;
+  }
+
+  .itb-version {
     font-size: 0.65rem;
-    margin-bottom: 8px;
+    letter-spacing: 1px;
+  }
+
+  .itb-nav-container {
+    margin: 4px 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow-y: auto;
+    max-height: calc(100vh - 120px);
+  }
+
+  .itb-button-stack {
+    gap: 8px;
+    max-width: 320px;
   }
 
   .itb-menu-btn {
-    padding: 10px 14px;
-    font-size: 0.8rem;
-  }
-
-  .itb-difficulty-card {
-    padding: 8px 12px;
-    margin-bottom: 6px;
-  }
-
-  .itb-diff-title {
+    padding: 8px 14px;
     font-size: 0.85rem;
+    letter-spacing: 1.5px;
+    gap: 10px;
+    clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
   }
 
-  .itb-diff-desc {
+  .itb-btn-marker {
+    font-size: 0.78rem;
+  }
+
+  /* Painel de Dificuldade e Treinamento */
+  .itb-submenu-panel {
+    gap: 5px;
+    max-width: 360px;
+    max-height: 100%;
+    overflow-y: auto;
+  }
+
+  .itb-panel-header {
+    padding-bottom: 4px;
+    margin-bottom: 2px;
+  }
+
+  .itb-panel-title {
+    font-size: 0.82rem;
+    letter-spacing: 1.5px;
+  }
+
+  .itb-panel-tag {
+    font-size: 0.62rem;
+    padding: 1px 5px;
+  }
+
+  .itb-panel-instructions {
+    font-size: 0.68rem;
+    line-height: 1.25;
+    margin: 2px 0 4px 0;
+  }
+
+  .itb-difficulty-list,
+  .itb-demos-list {
+    gap: 5px;
+  }
+
+  .itb-sub-btn {
+    padding: 6px 10px;
+    gap: 2px;
+    clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+  }
+
+  .itb-sub-title {
+    font-size: 0.8rem;
+    letter-spacing: 1px;
+  }
+
+  .itb-sub-desc {
+    font-size: 0.64rem;
+    line-height: 1.2;
+  }
+
+  .itb-sub-bullet {
+    font-size: 0.65rem;
+  }
+
+  .itb-submenu-actions {
+    gap: 6px;
+    margin-top: 4px;
+  }
+
+  .itb-aux-btn,
+  .itb-back-btn {
+    padding: 5px 10px;
+    font-size: 0.7rem;
+  }
+
+  /* Rodapé do Menu Principal */
+  .itb-footer-section {
+    padding-top: 4px;
+    gap: 2px;
+    font-size: 0.62rem;
+  }
+
+  .itb-copy {
+    font-size: 0.55rem;
+  }
+
+  .itb-language-selector-bottom-right {
+    bottom: 8px;
+    right: 12px;
+    padding: 3px 8px;
+    gap: 4px;
+  }
+
+  .itb-lang-btn {
+    font-size: 0.68rem;
+    padding: 2px 5px;
+  }
+
+  /* Modal de Opções e Créditos no Mobile */
+  .itb-modal-card {
+    max-height: 94vh;
+    overflow-y: auto;
+  }
+
+  .itb-modal-header {
+    padding: 10px 16px;
+  }
+
+  .itb-modal-body {
+    padding: 14px 16px;
+    gap: 14px;
+  }
+
+  /* Tela de Demonstração (DemoArena) */
+  .demo-sidebar {
+    width: 230px;
+    padding: 8px 12px;
+    gap: 4px;
+  }
+
+  .demo-header-title {
+    font-size: 0.92rem;
+    margin-bottom: 2px;
+  }
+
+  .demo-skill-label {
     font-size: 0.68rem;
   }
 
-  .camera-mode-selector .camera-btn {
-    height: 28px;
+  .demo-skill-name {
+    font-size: 1.05rem;
+    margin-top: 1px;
+  }
+
+  .demo-desc {
+    font-size: 0.68rem;
+    margin-top: 4px;
+    line-height: 1.2;
+  }
+
+  .demo-code-container {
+    margin-top: 4px;
+    padding: 6px 8px;
+  }
+
+  .demo-code {
     font-size: 0.72rem;
-    padding: 0 8px;
+  }
+
+  .demo-switch-section {
+    padding-top: 6px;
+  }
+
+  .demo-switch-title {
+    font-size: 0.75rem;
+    margin-bottom: 4px;
+  }
+
+  .demo-switch-btn-stack {
+    gap: 4px;
+  }
+
+  .demo-btn {
+    padding: 4px 8px;
+    font-size: 0.72rem;
+  }
+
+  .demo-back-btn {
+    margin-top: 6px;
+    padding: 6px 8px;
+    font-size: 0.72rem;
+  }
+
+  /* HUD de Partida Superior Direito */
+  .top-game-hud {
+    top: 8px;
+    right: 10px;
+    padding: 4px 10px;
+    font-size: 11px;
+    gap: 8px;
+  }
+
+  .top-game-hud-level {
+    font-size: 10px;
+    margin-left: 4px;
+  }
+
+  /* Seletor de Câmeras e Botão de Recentralizar */
+  .camera-mode-selector {
+    padding: 3px;
+    gap: 4px;
+  }
+
+  .camera-mode-selector .camera-btn {
+    height: 26px;
+    font-size: 0.68rem;
+    padding: 0 6px;
+    letter-spacing: 0.5px;
   }
 }
 

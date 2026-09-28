@@ -107,13 +107,150 @@ function CameraRig({ screenShakeTime }) {
 }
 
 // ── Controlador Multi-Câmeras: 3D, 2D e Livre + Cinemática do Boss ──
-function CameraController({ cameraMode = '3D', arenaSize = 10, introPhase = null, bossPos3D = null }) {
-  const { camera } = useThree();
+function CameraController({
+  cameraMode = '3D',
+  arenaSize = 10,
+  introPhase = null,
+  bossPos3D = null,
+  isMobile = false,
+  playerPos3D = null,
+  isCameraCentered = false,
+  setIsCameraCentered = null,
+}) {
+  const { camera, gl } = useThree();
   const controlsRef = useRef();
 
   // Zoom dinâmico calibrado para enquadramento justo conforme Imagem 4
   const zoom3D = useMemo(() => Math.round((48 * 10) / arenaSize), [arenaSize]);
   const zoom2D = useMemo(() => Math.round((42 * 10) / arenaSize), [arenaSize]);
+
+  // Alvos e offsets da câmera para Pan e Zoom estilo LoL
+  const targetPan = useRef({ x: 0, z: 0 });
+  const currentPan = useRef({ x: 0, z: 0 });
+  const targetZoom = useRef(zoom3D);
+
+  // Sincronizar zoom base quando arenaSize mudar
+  useEffect(() => {
+    targetZoom.current = zoom3D;
+  }, [zoom3D]);
+
+  // Ao ativar recentralização, focar diretamente no robô do jogador
+  useEffect(() => {
+    if (isCameraCentered && playerPos3D) {
+      targetPan.current = { x: playerPos3D[0], z: playerPos3D[2] };
+      targetZoom.current = zoom3D;
+    }
+  }, [isCameraCentered, playerPos3D, zoom3D]);
+
+  // Suporte a arrasto de visão (Pan 1 dedo) e Zoom (Pinch 2 dedos) no mobile
+  useEffect(() => {
+    if (!gl || !gl.domElement) return;
+    const dom = gl.domElement;
+
+    const activePointers = new Map();
+    let initialPinchDist = 0;
+    let initialPinchZoom = targetZoom.current;
+    let isDragging = false;
+    let dragStartPos = { x: 0, y: 0 };
+
+    const onPointerDown = (e) => {
+      if (e.pointerType === 'mouse' && !isMobile) return;
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (activePointers.size === 1) {
+        dragStartPos = { x: e.clientX, y: e.clientY };
+        isDragging = false;
+      } else if (activePointers.size === 2) {
+        const pts = Array.from(activePointers.values());
+        initialPinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        initialPinchZoom = targetZoom.current;
+        isDragging = true;
+        if (typeof window !== 'undefined') window.__mobileCameraDragged = true;
+      }
+    };
+
+    const onPointerMove = (e) => {
+      if (!activePointers.has(e.pointerId)) return;
+      const prev = activePointers.get(e.pointerId);
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (activePointers.size === 1) {
+        const totalDist = Math.hypot(e.clientX - dragStartPos.x, e.clientY - dragStartPos.y);
+        if (!isDragging && totalDist > 8) {
+          isDragging = true;
+          if (typeof window !== 'undefined') window.__mobileCameraDragged = true;
+          if (setIsCameraCentered) {
+            setIsCameraCentered(false);
+          }
+        }
+
+        if (isDragging) {
+          const dx = e.clientX - prev.x;
+          const dy = e.clientY - prev.y;
+
+          // Pan ortográfico 3D em relação ao solo:
+          // dx na tela move o eixo X no mundo
+          // dy na tela move o eixo Z no mundo (com compensação de 45 graus)
+          const z = targetZoom.current || zoom3D;
+          const deltaX = -dx / z;
+          const deltaZ = -dy / (z * 0.7071);
+
+          targetPan.current.x += deltaX;
+          targetPan.current.z += deltaZ;
+
+          // Clamping para não voar para fora da arena
+          const maxPan = arenaSize * 0.75;
+          targetPan.current.x = Math.max(-maxPan, Math.min(maxPan, targetPan.current.x));
+          targetPan.current.z = Math.max(-maxPan, Math.min(maxPan, targetPan.current.z));
+        }
+      } else if (activePointers.size === 2) {
+        const pts = Array.from(activePointers.values());
+        const currentDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        if (initialPinchDist > 0) {
+          const factor = currentDist / initialPinchDist;
+          const newZ = initialPinchZoom * factor;
+          // Zoom amplo (0.4x até 2.4x)
+          const minZ = zoom3D * 0.4;
+          const maxZ = zoom3D * 2.4;
+          targetZoom.current = Math.max(minZ, Math.min(maxZ, newZ));
+        }
+      }
+    };
+
+    const onPointerUp = (e) => {
+      activePointers.delete(e.pointerId);
+      if (activePointers.size === 0) {
+        if (isDragging) {
+          setTimeout(() => {
+            if (typeof window !== 'undefined') window.__mobileCameraDragged = false;
+          }, 120);
+        } else {
+          if (typeof window !== 'undefined') window.__mobileCameraDragged = false;
+        }
+        isDragging = false;
+      }
+    };
+
+    const onTouchMovePrevent = (e) => {
+      if (activePointers.size > 0) {
+        e.preventDefault();
+      }
+    };
+
+    dom.addEventListener('pointerdown', onPointerDown);
+    dom.addEventListener('pointermove', onPointerMove);
+    dom.addEventListener('pointerup', onPointerUp);
+    dom.addEventListener('pointercancel', onPointerUp);
+    dom.addEventListener('touchmove', onTouchMovePrevent, { passive: false });
+
+    return () => {
+      dom.removeEventListener('pointerdown', onPointerDown);
+      dom.removeEventListener('pointermove', onPointerMove);
+      dom.removeEventListener('pointerup', onPointerUp);
+      dom.removeEventListener('pointercancel', onPointerUp);
+      dom.removeEventListener('touchmove', onTouchMovePrevent);
+    };
+  }, [gl, isMobile, arenaSize, zoom3D]);
 
   // Alvos da Câmera
   const targets = useMemo(() => ({
@@ -126,7 +263,7 @@ function CameraController({ cameraMode = '3D', arenaSize = 10, introPhase = null
     '2D': {
       pos: new THREE.Vector3(-0.8, 25, 0),
       lookAt: new THREE.Vector3(-0.8, 0, 0),
-      up: new THREE.Vector3(0, 0, -1), // Garante que -Z é UP e +X é RIGHT (Imagem 3)
+      up: new THREE.Vector3(0, 0, -1), // Garante que -Z é UP e +X é RIGHT
       zoom: zoom2D
     },
     'livre': {
@@ -160,17 +297,42 @@ function CameraController({ cameraMode = '3D', arenaSize = 10, introPhase = null
       }
     }
 
+    // Se o modo centralizado estiver ativado, manter a câmera travada na posição do robô
+    if (isCameraCentered && playerPos3D) {
+      targetPan.current.x = playerPos3D[0];
+      targetPan.current.z = playerPos3D[2];
+    }
+
+    // Suavização do Pan e Zoom móvel
+    const panSpeed = delta * 12;
+    currentPan.current.x = THREE.MathUtils.lerp(currentPan.current.x, targetPan.current.x, panSpeed);
+    currentPan.current.z = THREE.MathUtils.lerp(currentPan.current.z, targetPan.current.z, panSpeed);
+
     // Prioridade 2: Transição de Câmera ou retorno do zoom out do Boss
     if (cameraMode !== 'livre' || introPhase === 'zoom_out') {
       const activePreset = targets[cameraMode] || targets['3D'];
       const speed = delta * 6;
 
-      camera.position.lerp(activePreset.pos, speed);
+      const effectiveTargetPos = new THREE.Vector3(
+        activePreset.pos.x + currentPan.current.x,
+        activePreset.pos.y,
+        activePreset.pos.z + currentPan.current.z
+      );
+
+      const effectiveLookAt = new THREE.Vector3(
+        activePreset.lookAt.x + currentPan.current.x,
+        activePreset.lookAt.y,
+        activePreset.lookAt.z + currentPan.current.z
+      );
+
+      const effectiveZoom = isMobile ? targetZoom.current : activePreset.zoom;
+
+      camera.position.lerp(effectiveTargetPos, speed);
       camera.up.lerp(activePreset.up, speed);
-      camera.zoom = THREE.MathUtils.lerp(camera.zoom, activePreset.zoom, speed);
+      camera.zoom = THREE.MathUtils.lerp(camera.zoom, effectiveZoom, speed);
 
       if (controlsRef.current) {
-        controlsRef.current.target.lerp(activePreset.lookAt, speed);
+        controlsRef.current.target.lerp(effectiveLookAt, speed);
         controlsRef.current.update();
       }
       camera.updateProjectionMatrix();
@@ -207,6 +369,9 @@ export default function Arena3D({
   selectedTile = null,
   activePlayerBomb = null,
   speedMultiplier = 1,
+  isMobile = false,
+  isCameraCentered = false,
+  setIsCameraCentered = null,
 }) {
   const [playerDamageTrigger, setPlayerDamageTrigger] = useState(0);
   const prevPlayerHp = useRef(playerHp);
@@ -575,7 +740,16 @@ export default function Arena3D({
       onCreated={({ gl }) => gl.setClearColor('#03060a')}
     >
       <OrthographicCamera makeDefault position={[0, 14, 14]} zoom={defaultZoom3D} />
-      <CameraController cameraMode={cameraMode} arenaSize={arenaSize} introPhase={bossIntroPhase} bossPos3D={bossPos3D} />
+      <CameraController
+        cameraMode={cameraMode}
+        arenaSize={arenaSize}
+        introPhase={bossIntroPhase}
+        bossPos3D={bossPos3D}
+        isMobile={isMobile}
+        playerPos3D={playerPos3D}
+        isCameraCentered={isCameraCentered}
+        setIsCameraCentered={setIsCameraCentered}
+      />
       <CameraRig screenShakeTime={screenShake} />
 
       <LightBootSequence />
