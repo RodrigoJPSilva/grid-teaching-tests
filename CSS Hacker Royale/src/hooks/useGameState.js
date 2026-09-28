@@ -259,9 +259,9 @@ export function useGameState(inputMode = 'radial') {
     bossSummonsTriggered.current.clear();
     playerHistory.current = [{ col: 1, row: 1, time: Date.now() }];
     playerTileFrequency.current = { '1,1': 1 };
-    const isEasy = diff === 'Facil';
-    setIsTutorialActive(isEasy);
-    if (!isEasy) {
+    const hasTutorial = diff === 'Facil' || diff === 'Normal';
+    setIsTutorialActive(hasTutorial);
+    if (!hasTutorial) {
       spawnWave(diff, 1, customSize);
     } else {
       setEnemies({});
@@ -355,11 +355,12 @@ export function useGameState(inputMode = 'radial') {
   const completeTutorialAndStartGame = useCallback(() => {
     setIsTutorialActive(false);
     setEnemies({});
-    // Pausa de 2 segundos de preparação antes do robô da Fase 1 descer
+    soundManager.playSpawnSound();
+    // Pausa de 1.5s antes de desovar os inimigos da Onda 1 da dificuldade escolhida
     setTimeout(() => {
-      spawnWave('Facil', 1, arenaSize);
-    }, 2000);
-  }, [spawnWave, arenaSize]);
+      spawnWave(difficulty, 1, arenaSize);
+    }, 1500);
+  }, [spawnWave, arenaSize, difficulty]);
 
   useEffect(() => {
     if (phase !== 'playing' || isTutorialActive) return;

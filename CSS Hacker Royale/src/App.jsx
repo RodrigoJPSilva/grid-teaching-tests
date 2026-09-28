@@ -157,7 +157,7 @@ export default function App() {
         gameState.startGame(difficulty, size || gridSize);
         setActivePlayerBomb(null);
         setBombCountdown(0);
-        if (difficulty === 'Facil') {
+        if (difficulty === 'Facil' || difficulty === 'Normal') {
           setTutorialStep(1);
           setTutTeleportSuccess(false);
           setTutBombTriggered(false);
@@ -267,7 +267,7 @@ export default function App() {
       }
 
       // Verificação do Tutorial Passo 2 (Teletransporte para o bloco amarelo 3, 3)
-      if (gameState.difficulty === 'Facil' && tutorialStep === 2) {
+      if ((gameState.difficulty === 'Facil' || gameState.difficulty === 'Normal') && tutorialStep === 2) {
         if (targetCol === 3 && targetRow === 3) {
           setTutTeleportSuccess(true);
           soundManager.playTutorialSuccess();
@@ -394,7 +394,7 @@ export default function App() {
       }
       soundManager.playMove();
 
-      if (gameState.difficulty === 'Facil' && tutorialStep === 2) {
+      if ((gameState.difficulty === 'Facil' || gameState.difficulty === 'Normal') && tutorialStep === 2) {
         if (col === 3 && row === 3) {
           setTutTeleportSuccess(true);
           soundManager.playTutorialSuccess();
@@ -434,7 +434,7 @@ export default function App() {
   const enemiesList = useMemo(() => Object.values(gameState.enemies), [gameState.enemies]);
 
   useEffect(() => {
-    if (gameState.difficulty !== 'Facil') return;
+    if (gameState.difficulty !== 'Facil' && gameState.difficulty !== 'Normal') return;
 
     if (tutorialStep === 3) {
       // Passo 3: 3 inimigos da bomba
@@ -461,7 +461,7 @@ export default function App() {
 
   // ── Destaque de Pisos no Tutorial ─────────────────────────
   const tutorialHighlightTiles = useMemo(() => {
-    if (gameState.difficulty !== 'Facil' || tutorialStep === 0) return [];
+    if ((gameState.difficulty !== 'Facil' && gameState.difficulty !== 'Normal') || tutorialStep === 0) return [];
 
     if (tutorialStep === 2) {
       return [{
@@ -791,7 +791,7 @@ export default function App() {
             />
 
             {/* ── BLOCO DE CONVERSA DO PERSONAGEM (Substituindo a TV) ── */}
-            {gameState.difficulty === 'Facil' && tutorialStep >= 1 && tutorialStep <= 4 && (
+            {(gameState.difficulty === 'Facil' || gameState.difficulty === 'Normal') && tutorialStep >= 1 && tutorialStep <= 4 && (
               <DialogueBox
                 title="AI TACTICAL ADVISOR"
                 stepLabel={`[TUTORIAL ${tutorialStep}/4]`}
@@ -804,6 +804,20 @@ export default function App() {
                     ? (tutBombTriggered ? t('tutBombSuccess', language) : t('tutBomb', language))
                     : (tutSniperTriggered ? t('tutSniperSuccess', language) : t('tutSniper', language))
                 }
+                onSkip={
+                  tutorialStep === 1
+                    ? () => {
+                        soundManager.playUIClick();
+                        setTutorialStep(0);
+                        if (gameState.completeTutorialAndStartGame) {
+                          gameState.completeTutorialAndStartGame();
+                        } else if (gameState.setIsTutorialActive) {
+                          gameState.setIsTutorialActive(false);
+                        }
+                      }
+                    : null
+                }
+                skipLabel={t('skipTutorial', language)}
                 onAction={
                   tutorialStep === 1
                     ? () => setTutorialStep(2)

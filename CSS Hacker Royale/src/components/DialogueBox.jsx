@@ -76,6 +76,8 @@ export default function DialogueBox({
   stepLabel = null,
   onAction = null,
   actionLabel = 'CONTINUAR ▶',
+  onSkip = null,
+  skipLabel = 'PULAR TUTORIAL ❯❯',
   isTyping = false,
 }) {
   const [displayedText, setDisplayedText] = useState('');
@@ -132,6 +134,15 @@ export default function DialogueBox({
         </div>
 
         <div className={styles.footerRow}>
+          {onSkip && (
+            <button
+              type="button"
+              className={styles.skipButton}
+              onClick={onSkip}
+            >
+              {skipLabel}
+            </button>
+          )}
           {onAction && (
             <button
               type="button"

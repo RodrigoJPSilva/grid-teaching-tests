@@ -113,6 +113,7 @@ export const TRANSLATIONS = {
     nextBtn: 'AVANÇAR',
     continueBtn: 'CONTINUAR',
     finishBtn: 'CONCLUIR',
+    skipTutorial: 'PULAR TUTORIAL ❯❯',
 
     // Mobile Orientation
     rotateTitle: 'GIRE SEU DISPOSITIVO',
@@ -212,6 +213,7 @@ export const TRANSLATIONS = {
     nextBtn: 'NEXT',
     continueBtn: 'CONTINUE',
     finishBtn: 'COMPLETE',
+    skipTutorial: 'SKIP TUTORIAL ❯❯',
 
     // Mobile Orientation
     rotateTitle: 'ROTATE YOUR DEVICE',
@@ -311,6 +313,7 @@ export const TRANSLATIONS = {
     nextBtn: 'SIGUIENTE',
     continueBtn: 'CONTINUAR',
     finishBtn: 'FINALIZAR',
+    skipTutorial: 'SALTAR TUTORIAL ❯❯',
 
     // Mobile Orientation
     rotateTitle: 'GIRA TU DISPOSITIVO',

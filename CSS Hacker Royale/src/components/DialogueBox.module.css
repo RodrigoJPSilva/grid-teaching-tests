@@ -195,8 +195,35 @@
   display: flex;
   justify-content: flex-end;
   align-items: center;
+  gap: 12px;
   z-index: 2;
   margin-top: 4px;
+}
+
+.skipButton {
+  background: rgba(255, 23, 68, 0.15);
+  border: 1px solid #ff1744;
+  color: #ff3d71;
+  font-family: 'Orbitron', 'Share Tech Mono', monospace;
+  font-size: 0.8rem;
+  font-weight: bold;
+  letter-spacing: 1.5px;
+  padding: 6px 16px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 10px rgba(255, 23, 68, 0.25);
+}
+
+.skipButton:hover {
+  background: #ff1744;
+  color: #ffffff;
+  box-shadow: 0 0 18px rgba(255, 23, 68, 0.7);
+  transform: translateY(-1px);
+}
+
+.skipButton:active {
+  transform: translateY(1px);
 }
 
 .actionButton {
@@ -224,3 +251,4 @@
 .actionButton:active {
   transform: translateY(1px);
 }
+
