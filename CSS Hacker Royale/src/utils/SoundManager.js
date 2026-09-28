@@ -719,6 +719,55 @@ class SoundManager {
     this.currentMusic = null;
   }
 
+  // ── 9. Som de Surgimento / Materialização na Arena (Jogador e NPCs) ──
+  playSpawnSound() {
+    if (!this.ensureContext()) return;
+    const now = this.ctx.currentTime;
+
+    // Tom futurista de materialização quântica com sweep ascendente e impacto suave
+    const osc = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(140, now);
+    osc.frequency.exponentialRampToValueAtTime(580, now + 0.18);
+    osc.frequency.exponentialRampToValueAtTime(320, now + 0.35);
+
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(400, now);
+    filter.frequency.exponentialRampToValueAtTime(1800, now + 0.15);
+    filter.frequency.exponentialRampToValueAtTime(600, now + 0.35);
+    filter.Q.value = 3.5;
+
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.25, now + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc.start(now);
+    osc.stop(now + 0.38);
+
+    // Ressonância harmônica brilhante (sine subindo)
+    const sparkle = this.ctx.createOscillator();
+    const sparkGain = this.ctx.createGain();
+    sparkle.type = 'sine';
+    sparkle.frequency.setValueAtTime(520, now);
+    sparkle.frequency.exponentialRampToValueAtTime(1240, now + 0.22);
+
+    sparkGain.gain.setValueAtTime(0.12, now);
+    sparkGain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+    sparkle.connect(sparkGain);
+    sparkGain.connect(this.masterGain);
+
+    sparkle.start(now);
+    sparkle.stop(now + 0.3);
+  }
+
   startMenuMusic() {
     this.playMusic('menu');
   }

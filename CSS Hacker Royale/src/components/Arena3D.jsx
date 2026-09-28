@@ -205,6 +205,7 @@ export default function Arena3D({
   currentLevel = 1,
   highlightTiles = [],
   selectedTile = null,
+  activePlayerBomb = null,
 }) {
   const [playerDamageTrigger, setPlayerDamageTrigger] = useState(0);
   const prevPlayerHp = useRef(playerHp);
@@ -245,7 +246,6 @@ export default function Arena3D({
 
   if (isMoving) {
     lastPlayerPos.current = { col: gameState.player.col, row: gameState.player.row };
-    soundManager.playMove();
     setTimeout(() => { if (playerRevealed) setPlayerRevealed(false); }, 0);
   }
 
@@ -284,7 +284,6 @@ export default function Arena3D({
 
     if (bossEnemy.isIntroActive && !bossIntroStartedRef.current) {
       bossIntroStartedRef.current = true;
-      soundManager.startBossMusic();
       if (difficulty === 'Matrix') {
         setBossIntroPhase('waiting_player');
         bossPhaseTimerRef.current = Date.now();
@@ -329,6 +328,8 @@ export default function Arena3D({
         if (elapsed >= 500) {
           setBossIntroPhase('boss_descent');
           bossPhaseTimerRef.current = now;
+          // Inicia a música do Boss exatamente quando a descida do boss começa!
+          soundManager.startBossMusic();
           if (bossEnemies.length > 0 && triggerBossDescent) {
             bossEnemies.forEach(b => triggerBossDescent(b.id, now));
           }
@@ -486,17 +487,18 @@ export default function Arena3D({
   useEffect(() => {
     if (bombThrowTrigger > 0) {
       throwerPosRef.current = [...playerPos3D];
-      soundManager.playBombLaunch();
     }
-  }, [bombThrowTrigger, playerPos3D]);
+  }, [bombThrowTrigger]);
 
   const activeSniperTarget = previewState?.sniper?.col
     ? previewState.sniper
     : (sniperShootTrigger > 0 ? gameState.sniper : null);
 
-  const activeBombTarget = (activeTool === 'bomba' && previewState?.bomba?.col)
-    ? previewState.bomba
-    : (bombCountdown > 0 ? gameState.bomba : null);
+  const activeBombTarget = activePlayerBomb
+    ? { col: activePlayerBomb.targetCol, row: activePlayerBomb.targetRow }
+    : ((activeTool === 'bomba' && previewState?.bomba?.col)
+        ? previewState.bomba
+        : (bombCountdown > 0 ? gameState.bomba : null));
 
   const now = Date.now();
   const isPlayerDescending = playerSpawnTime > 0 && now >= playerSpawnTime && (now - playerSpawnTime < 1500);
@@ -551,7 +553,18 @@ export default function Arena3D({
   else if (activeTool === 'sniper' && previewSniperPos3D) playerLookAt = previewSniperPos3D;
   else if (activeTool) playerLookAt = 'weapon';
 
-  const handlePlayerLanded = () => {};
+  const handlePlayerLanded = () => {
+    soundManager.playSpawnSound();
+  };
+
+  const handleEnemyLanded = (enemy) => {
+    if (enemy.type === 'boss') {
+      soundManager.playBossLand();
+    } else {
+      soundManager.playSpawnSound();
+    }
+  };
+
   const defaultZoom3D = Math.round((48 * 10) / arenaSize);
 
   return (
@@ -628,16 +641,16 @@ export default function Arena3D({
         return null;
       })}
 
-      {/* Bomba Area do Jogador (apenas durante o countdown ou na prévia com ferramenta ativa) */}
-      {bombCountdown > 0 && gameState.bomba && (
+      {/* Bomba Area do Jogador (durante o countdown ou com bomba ativa ou na prévia) */}
+      {((activePlayerBomb && bombCountdown > 0) || (bombCountdown > 0 && gameState.bomba)) && (
         <BombArea
-          centerCol={gameState.bomba.col}
-          centerRow={gameState.bomba.row}
+          centerCol={activePlayerBomb ? activePlayerBomb.targetCol : gameState.bomba.col}
+          centerRow={activePlayerBomb ? activePlayerBomb.targetRow : gameState.bomba.row}
           arenaSize={arenaSize}
           color="#00ff88"
         />
       )}
-      {bombCountdown === 0 && activeTool === 'bomba' && previewState?.bomba?.col && (
+      {bombCountdown === 0 && !activePlayerBomb && activeTool === 'bomba' && previewState?.bomba?.col && (
         <BombArea
           centerCol={previewState.bomba.col}
           centerRow={previewState.bomba.row}
@@ -646,8 +659,21 @@ export default function Arena3D({
         />
       )}
 
-      {/* Bomba voadora do Jogador (apenas durante o countdown) */}
-      {bombCountdown > 0 && bombThrowTrigger > 0 && bombaPos3D && throwerPosRef.current && (
+      {/* Bomba voadora do Jogador (permanece em voo mesmo se o jogador mover!) */}
+      {activePlayerBomb ? (
+        <Bomb
+          key={activePlayerBomb.id}
+          startPos={[activePlayerBomb.throwerPos[0] + 0.28, 0.8, activePlayerBomb.throwerPos[2]]}
+          endPos={gridToPosition3D(activePlayerBomb.targetCol, activePlayerBomb.targetRow, arenaSize)}
+          startTime={activePlayerBomb.startTime + 200}
+          duration={5000}
+          shooterType="player"
+          onImpact={() => {
+            setWaveHits(prev => [...prev, { col: activePlayerBomb.targetCol, row: activePlayerBomb.targetRow, time: Date.now() }]);
+            soundManager.playExplosion();
+          }}
+        />
+      ) : (bombCountdown > 0 && bombThrowTrigger > 0 && bombaPos3D && throwerPosRef.current && (
         <Bomb
           startPos={[throwerPosRef.current[0] + 0.28, 0.8, throwerPosRef.current[2]]}
           endPos={bombaPos3D}
@@ -661,7 +687,7 @@ export default function Arena3D({
             }
           }}
         />
-      )}
+      ))}
 
       {/* Bombas Inimigas */}
       {incomingBombs.map(b => {

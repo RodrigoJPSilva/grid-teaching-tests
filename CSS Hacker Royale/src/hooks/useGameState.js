@@ -77,7 +77,7 @@ function findFreePosition(arenaSize, size, playerPos, existingEnemies, currentEn
   return [minRow, minCol];
 }
 
-export function useGameState() {
+export function useGameState(inputMode = 'radial') {
   const [phase, setPhase] = useState('menu'); // menu, playing, gameover, victory
   const [difficulty, setDifficulty] = useState('Facil');
   const [currentLevel, setCurrentLevel] = useState(1);
@@ -90,12 +90,30 @@ export function useGameState() {
   const lastPlayerPos = useRef({ col: 1, row: 1 });
   const [lastParsedPos, setLastParsedPos] = useState({ col: 1, row: 1 });
 
+  // Histórico de movimentos do jogador para a mira preditiva dos NPCs
+  const playerHistory = useRef([{ col: 1, row: 1, time: Date.now() }]);
+  const playerTileFrequency = useRef({ '1,1': 1 });
+
+  const recordPlayerMove = useCallback((col, row) => {
+    const key = `${col},${row}`;
+    playerTileFrequency.current[key] = (playerTileFrequency.current[key] || 0) + 1;
+    playerHistory.current.push({ col, row, time: Date.now() });
+    if (playerHistory.current.length > 30) {
+      playerHistory.current.shift();
+    }
+  }, []);
+
+  // Checkpoints de invocação de reforços por Boss
+  const bossSummonsTriggered = useRef(new Map());
+
   const lastPlayerDamageTime = useRef(0);
+  const playerSpawnTimeRef = useRef(0);
   const [incomingBombs, setIncomingBombs] = useState([]);
 
   const applyPlayerDamage = useCallback((amount = 1) => {
     const now = Date.now();
     if (now - lastPlayerDamageTime.current < 2000) return false;
+    if (playerSpawnTimeRef.current > 0 && now < playerSpawnTimeRef.current + 2000) return false;
     lastPlayerDamageTime.current = now;
     soundManager.playDamage();
     setPlayerHp(hp => {
@@ -152,6 +170,7 @@ export function useGameState() {
   }, []);
 
   const resetSpawnTimes = useCallback((timestamp = Date.now()) => {
+    playerSpawnTimeRef.current = timestamp;
     setEnemies(prev => {
       const updated = {};
       Object.entries(prev).forEach(([id, enemy]) => {
@@ -237,6 +256,9 @@ export function useGameState() {
     lastPlayerDamageTime.current = 0;
     setPhase('playing');
     setIncomingBombs([]);
+    bossSummonsTriggered.current.clear();
+    playerHistory.current = [{ col: 1, row: 1, time: Date.now() }];
+    playerTileFrequency.current = { '1,1': 1 };
     const isEasy = diff === 'Facil';
     setIsTutorialActive(isEasy);
     if (!isEasy) {
@@ -350,9 +372,80 @@ export function useGameState() {
     }
   }, [enemies, phase, difficulty, currentLevel, arenaSize, isTutorialActive, spawnWave]);
 
+  // ── Invocação de Reforços pelo Boss ─────────────────────────
+  const checkBossSummons = useCallback((boss, nextHp, currentEnemies) => {
+    if (boss.type !== 'boss' || nextHp <= 0) return currentEnemies;
+    const maxHp = boss.maxHp || 30;
+    let triggeredSet = bossSummonsTriggered.current.get(boss.id);
+    if (!triggeredSet) {
+      triggeredSet = new Set();
+      bossSummonsTriggered.current.set(boss.id, triggeredSet);
+    }
+
+    let npcsToSummon = 0;
+
+    if (inputMode === 'radial') {
+      // Sempre que perde 1/4 da vida (75%, 50%, 25%), invocando 2 + FraçãoDeVidaPerdida
+      // 1/4 perdido (<= 75% HP): fração = 1 -> invoca 2 + 1 = 3 NPCs
+      // 2/4 perdido (<= 50% HP): fração = 2 -> invoca 2 + 2 = 4 NPCs (ex: metade da vida)
+      // 3/4 perdido (<= 25% HP): fração = 3 -> invoca 2 + 3 = 5 NPCs
+      if (nextHp <= maxHp * 0.75 && !triggeredSet.has('q1')) {
+        triggeredSet.add('q1');
+        npcsToSummon += 3;
+      }
+      if (nextHp <= maxHp * 0.50 && !triggeredSet.has('q2')) {
+        triggeredSet.add('q2');
+        npcsToSummon += 4;
+      }
+      if (nextHp <= maxHp * 0.25 && !triggeredSet.has('q3')) {
+        triggeredSet.add('q3');
+        npcsToSummon += 5;
+      }
+    } else {
+      // Modo Padrão: Quando chega na metade da vida (<= 50%), invoca 2 NPCs
+      if (nextHp <= maxHp * 0.50 && !triggeredSet.has('half')) {
+        triggeredSet.add('half');
+        npcsToSummon += 2;
+      }
+    }
+
+    if (npcsToSummon > 0) {
+      const now = Date.now();
+      soundManager.playPowerUp();
+      const updated = { ...currentEnemies };
+      for (let i = 0; i < npcsToSummon; i++) {
+        const id = `reinforce-${boss.id}-${Date.now()}-${i}`;
+        const safePos = findFreePosition(arenaSize, [1, 1], lastPlayerPos.current, updated, null, false);
+        updated[id] = {
+          id,
+          name: `Reforço-${String.fromCharCode(65 + (Object.keys(updated).length % 26))}`,
+          type: 'normal',
+          hp: 3,
+          maxHp: 3,
+          size: [1, 1],
+          position: safePos,
+          revealed: true,
+          bombDelay: inputMode === 'radial' ? 3000 : 6000,
+          teleDelay: inputMode === 'radial' ? 10000 : 20000,
+          lastBombTime: now,
+          lastTeleTime: now,
+          lastDamageTime: 0,
+          bombsToFire: 1,
+          spawnTime: now + 300 + i * 250,
+          isIntroActive: false
+        };
+      }
+      return updated;
+    }
+    return currentEnemies;
+  }, [inputMode, arenaSize]);
+
   // ── Inteligência dos Bots ─────────────────────────────────
   useEffect(() => {
     if (phase !== 'playing') return;
+
+    // No modo Menu Radial, os inimigos são 2x mais rápidos em todas as ações
+    const speedMultiplier = inputMode === 'radial' ? 2 : 1;
 
     const interval = setInterval(() => {
       const now = Date.now();
@@ -371,8 +464,9 @@ export function useGameState() {
           if (eCopy.type === 'boss') {
             if (eCopy.skyBombAttack) {
               if (now >= eCopy.skyBombAttack.skyDropTime) {
-                // Disparo real das bombas caindo do céu (1 segundo após as mini-bombas subirem)
+                // Disparo real das bombas caindo do céu (delays divididos pelo speedMultiplier)
                 const shootPos = eCopy.position ? [eCopy.position[1], eCopy.position[0]] : [1, 1];
+                const dropIntervalMs = Math.round(400 / speedMultiplier);
                 for (let i = 0; i < eCopy.skyBombAttack.bombsCount; i++) {
                   setTimeout(() => {
                     const targetCol = Math.floor(Math.random() * arenaSize) + 1;
@@ -384,17 +478,17 @@ export function useGameState() {
                       shooterPos: shootPos,
                       shooterType: eCopy.type
                     }]);
-                  }, i * 400);
+                  }, i * dropIntervalMs);
                 }
                 eCopy.skyBombAttack = null;
                 eCopy.lastBombTime = now;
                 didSomething = true;
               }
-            } else if (!eCopy.jumpState && !eCopy.landingState && now - eCopy.lastBombTime > eCopy.bombDelay) {
-              // Inicia nova animação de lançamento para o céu (0.2s por mão alternada + 0.5s voo + 1.0s de antecedência)
+            } else if (!eCopy.jumpState && !eCopy.landingState && now - eCopy.lastBombTime > (eCopy.bombDelay / speedMultiplier)) {
+              // Inicia animação de lançamento para o céu (2x mais rápida no modo radial)
               const bombsCount = eCopy.bombsToFire || 5;
-              const lastBombAscendEndMs = Math.round((bombsCount * 0.2 + 0.5) * 1000);
-              const skyDropDelayMs = lastBombAscendEndMs + 1000; // 1 segundo após a última bomba subir
+              const lastBombAscendEndMs = Math.round(((bombsCount * 0.2 + 0.5) * 1000) / speedMultiplier);
+              const skyDropDelayMs = Math.round((lastBombAscendEndMs + 1000) / speedMultiplier);
               eCopy.skyBombAttack = {
                 startTime: now,
                 bombsCount: bombsCount,
@@ -404,11 +498,11 @@ export function useGameState() {
               didSomething = true;
             }
           } else {
-            // NPCs normais atiram bombas padrão com animação sincronizada e mãos alternadas (pausados se tutorial estiver ativo)
-            if (!isTutorialActive && now - eCopy.lastBombTime > eCopy.bombDelay) {
+            // NPCs normais atiram bombas padrão (pausados se tutorial estiver ativo)
+            if (!isTutorialActive && now - eCopy.lastBombTime > (eCopy.bombDelay / speedMultiplier)) {
               eCopy.lastBombTime = now;
               const bombsCount = eCopy.bombsToFire || 1;
-              const totalDurationMs = Math.round(((bombsCount - 1) * 0.4 + 0.7) * 1000);
+              const totalDurationMs = Math.round((((bombsCount - 1) * 0.4 + 0.7) * 1000) / speedMultiplier);
               eCopy.bombAttack = {
                 startTime: now,
                 bombsCount: bombsCount,
@@ -417,10 +511,74 @@ export function useGameState() {
               didSomething = true;
 
               for (let i = 0; i < bombsCount; i++) {
-                const launchDelayMs = i * 400 + 200;
+                const launchDelayMs = Math.round((i * 400 + 200) / speedMultiplier);
                 setTimeout(() => {
-                  const targetCol = Math.floor(Math.random() * arenaSize) + 1;
-                  const targetRow = Math.floor(Math.random() * arenaSize) + 1;
+                  let targetCol;
+                  let targetRow;
+
+                  if (inputMode === 'radial') {
+                    // Padrão de mira dos NPCs no Modo Menu Radial
+                    const aliveNpcs = Object.values(updated)
+                      .filter(e => e.type === 'normal' && e.hp > 0)
+                      .sort((a, b) => a.id.localeCompare(b.id));
+                    const npcIdx = aliveNpcs.findIndex(e => e.id === eCopy.id);
+
+                    if (npcIdx === 0) {
+                      // O primeiro NPC sempre foca no jogador
+                      // Se ele lança 2 bombas: 1 é no alcance da área do jogador e a outra é em piso aleatório
+                      if (i === 0) {
+                        const dc = Math.floor(Math.random() * 3) - 1; // -1, 0, +1
+                        const dr = Math.floor(Math.random() * 3) - 1; // -1, 0, +1
+                        targetCol = Math.max(1, Math.min(arenaSize, lastPlayerPos.current.col + dc));
+                        targetRow = Math.max(1, Math.min(arenaSize, lastPlayerPos.current.row + dr));
+                      } else {
+                        targetCol = Math.floor(Math.random() * arenaSize) + 1;
+                        targetRow = Math.floor(Math.random() * arenaSize) + 1;
+                      }
+                    } else if (npcIdx === 1) {
+                      // O segundo NPC foca em possíveis locais que o jogador irá, pensando em locais que costuma ir
+                      // Se não souber ainda, lança em áreas aleatórias
+                      let predicted = null;
+                      const hist = playerHistory.current;
+                      if (hist.length >= 2) {
+                        const last1 = hist[hist.length - 1];
+                        const last2 = hist[hist.length - 2];
+                        const dCol = last1.col - last2.col;
+                        const dRow = last1.row - last2.row;
+                        const candCol = last1.col + dCol;
+                        const candRow = last1.row + dRow;
+                        if (candCol >= 1 && candCol <= arenaSize && candRow >= 1 && candRow <= arenaSize && (dCol !== 0 || dRow !== 0)) {
+                          predicted = { col: candCol, row: candRow };
+                        }
+                      }
+
+                      if (!predicted) {
+                        const freqs = Object.entries(playerTileFrequency.current)
+                          .filter(([k]) => k !== `${lastPlayerPos.current.col},${lastPlayerPos.current.row}`)
+                          .sort((a, b) => b[1] - a[1]);
+                        if (freqs.length > 0) {
+                          const [fCol, fRow] = freqs[0][0].split(',').map(Number);
+                          predicted = { col: fCol, row: fRow };
+                        }
+                      }
+
+                      if (predicted && (i === 0 || Math.random() < 0.5)) {
+                        targetCol = predicted.col;
+                        targetRow = predicted.row;
+                      } else {
+                        targetCol = Math.floor(Math.random() * arenaSize) + 1;
+                        targetRow = Math.floor(Math.random() * arenaSize) + 1;
+                      }
+                    } else {
+                      // O terceiro NPC segue disparando aleatoriamente
+                      targetCol = Math.floor(Math.random() * arenaSize) + 1;
+                      targetRow = Math.floor(Math.random() * arenaSize) + 1;
+                    }
+                  } else {
+                    targetCol = Math.floor(Math.random() * arenaSize) + 1;
+                    targetRow = Math.floor(Math.random() * arenaSize) + 1;
+                  }
+
                   const bombId = `b-${Date.now()}-${Math.random()}`;
                   soundManager.playBombLaunch();
                   setIncomingBombs(b => [...b, { 
@@ -450,18 +608,21 @@ export function useGameState() {
             }
           }
 
-          // 2. Movimentação: Pulo Parabólico de 5s para o Boss vs Teleporte para NPCs
+          // 2. Movimentação: Pulo Parabólico do Boss vs Teleporte para NPCs (2x mais rápidos no modo radial)
           if (eCopy.type === 'boss') {
+            const jumpDurationMs = Math.round(5000 / speedMultiplier);
+            const landingDurationMs = Math.round(1500 / speedMultiplier);
+
             if (eCopy.jumpState) {
-              if (now - eCopy.jumpState.startTime >= 5000) {
-                // Aterrissagem concluída -> Entra imediatamente na animação de pouso (1.5 segundos)
+              if (now - eCopy.jumpState.startTime >= jumpDurationMs) {
+                // Aterrissagem concluída -> Entra imediatamente na animação de pouso
                 const [targetRow, targetCol] = eCopy.jumpState.targetPos;
                 eCopy.position = [targetRow, targetCol];
                 eCopy.lastTeleTime = now;
                 eCopy.jumpState = null;
                 eCopy.landingState = {
                   startTime: now,
-                  duration: 1500, // 1.5s configurado pelo usuário
+                  duration: landingDurationMs,
                 };
                 didSomething = true;
 
@@ -473,24 +634,24 @@ export function useGameState() {
                 }
               }
             } else if (eCopy.landingState) {
-              // Boss bloqueado durante o pouso (1.5s) antes de poder iniciar outros ataques
+              // Boss bloqueado durante o pouso antes de poder iniciar outros ataques
               if (now - eCopy.landingState.startTime >= eCopy.landingState.duration) {
                 eCopy.landingState = null;
                 didSomething = true;
               }
-            } else if (now - eCopy.lastTeleTime > eCopy.teleDelay && !eCopy.skyBombAttack) {
+            } else if (now - eCopy.lastTeleTime > (eCopy.teleDelay / speedMultiplier) && !eCopy.skyBombAttack) {
               const targetPos = findFreePosition(arenaSize, eCopy.size, lastPlayerPos.current, updated, eCopy.id, true);
               eCopy.jumpState = {
                 startTime: now,
                 startPos: [...eCopy.position],
                 targetPos: targetPos,
-                duration: 5000,
+                duration: jumpDurationMs,
               };
               didSomething = true;
             }
           } else {
             // NPCs normais usam teleporte instantâneo
-            if (now - eCopy.lastTeleTime > eCopy.teleDelay) {
+            if (now - eCopy.lastTeleTime > (eCopy.teleDelay / speedMultiplier)) {
               eCopy.lastTeleTime = now;
               eCopy.position = findFreePosition(arenaSize, eCopy.size, lastPlayerPos.current, updated, eCopy.id);
               didSomething = true;
@@ -509,7 +670,7 @@ export function useGameState() {
     }, 100);
 
     return () => clearInterval(interval);
-  }, [phase, arenaSize, applyPlayerDamage]);
+  }, [phase, arenaSize, applyPlayerDamage, inputMode, isTutorialActive]);
 
   // ── Resolução de Bombas Inimigas ─────────────────────────
   useEffect(() => {
@@ -554,9 +715,13 @@ export function useGameState() {
   const fireBomb = useCallback((col, row) => {
     const now = Date.now();
     setEnemies(prev => {
-      const updated = { ...prev };
+      let updated = { ...prev };
+      let anyHit = false;
       Object.values(updated).forEach(enemy => {
         if (enemy.hp <= 0) return;
+        // Imune a dano se ainda estiver na animação de surgimento descendo dos céus
+        const isSpawning = enemy.spawnTime > 0 && now < enemy.spawnTime + (enemy.type === 'boss' ? 3000 : 2500);
+        if (isSpawning) return;
         if (enemy.lastDamageTime && now - enemy.lastDamageTime < 2000) return;
         
         let isHit = false;
@@ -567,6 +732,7 @@ export function useGameState() {
         }
         
         if (isHit) {
+          anyHit = true;
           const newHp = Math.max(0, enemy.hp - 1);
           updated[enemy.id] = {
             ...enemy,
@@ -575,21 +741,29 @@ export function useGameState() {
             deathTime: newHp <= 0 ? (enemy.deathTime || now) : 0,
             lastDamageTime: now
           };
+          if (enemy.type === 'boss') {
+            updated = checkBossSummons(enemy, newHp, updated);
+          }
         }
       });
-      return updated;
+      return anyHit ? updated : prev;
     });
-  }, [checkEnemyHit]);
+  }, [checkEnemyHit, checkBossSummons]);
 
   const fireSniper = useCallback((col, row) => {
     const now = Date.now();
     setEnemies(prev => {
-      const updated = { ...prev };
+      let updated = { ...prev };
+      let anyHit = false;
       Object.values(updated).forEach(enemy => {
         if (enemy.hp <= 0) return;
+        // Imune a dano se ainda estiver na animação de surgimento descendo dos céus
+        const isSpawning = enemy.spawnTime > 0 && now < enemy.spawnTime + (enemy.type === 'boss' ? 3000 : 2500);
+        if (isSpawning) return;
         if (enemy.lastDamageTime && now - enemy.lastDamageTime < 2000) return;
 
         if (checkEnemyHit(enemy, row, col)) {
+          anyHit = true;
           const newHp = Math.max(0, enemy.hp - 3);
           updated[enemy.id] = {
             ...enemy,
@@ -598,11 +772,14 @@ export function useGameState() {
             deathTime: newHp <= 0 ? (enemy.deathTime || now) : 0,
             lastDamageTime: now
           };
+          if (enemy.type === 'boss') {
+            updated = checkBossSummons(enemy, newHp, updated);
+          }
         }
       });
-      return updated;
+      return anyHit ? updated : prev;
     });
-  }, [checkEnemyHit]);
+  }, [checkEnemyHit, checkBossSummons]);
 
   return {
     phase, setPhase, startGame, arenaSize,
@@ -610,6 +787,7 @@ export function useGameState() {
     enemies, playerHp, setPlayerHp,
     applyPlayerDamage,
     lastPlayerPos, lastParsedPos, setLastParsedPos,
+    recordPlayerMove,
     fireBomb, fireSniper,
     incomingBombs,
     resetSpawnTimes,

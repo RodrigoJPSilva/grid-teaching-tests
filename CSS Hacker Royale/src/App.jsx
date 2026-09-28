@@ -6,7 +6,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import Arena3D from './components/Arena3D';
 import { useGameState } from './hooks/useGameState';
-import { parsePlayerCode, getActiveEditorClass } from './utils/GameEngine';
+import { parsePlayerCode, getActiveEditorClass, gridToPosition3D } from './utils/GameEngine';
 import MainMenu from './components/MainMenu';
 import DemoArena from './components/DemoArena';
 import LoadingScreen from './components/LoadingScreen';
@@ -40,6 +40,7 @@ export default function App() {
 
   const [bombCountdown, setBombCountdown] = useState(0);
   const [activeTool, setActiveTool] = useState(null);
+  const [activePlayerBomb, setActivePlayerBomb] = useState(null);
 
   const [bombThrowTrigger, setBombThrowTrigger] = useState(0);
   const [sniperShootTrigger, setSniperShootTrigger] = useState(0);
@@ -90,7 +91,7 @@ export default function App() {
     }
   }, [gameAlert]);
 
-  const gameState = useGameState();
+  const gameState = useGameState(inputMode);
 
   useEffect(() => {
     window.__triggerBossJump = () => {
@@ -113,6 +114,8 @@ export default function App() {
       minDuration: 1500,
       onOpaque: () => {
         gameState.startGame(difficulty, size || gridSize);
+        setActivePlayerBomb(null);
+        setBombCountdown(0);
         if (difficulty === 'Facil') {
           setTutorialStep(1);
           setTutTeleportSuccess(false);
@@ -218,6 +221,9 @@ export default function App() {
 
       gameState.lastPlayerPos.current = { col: targetCol, row: targetRow };
       gameState.setLastParsedPos({ col: targetCol, row: targetRow });
+      if (gameState.recordPlayerMove) {
+        gameState.recordPlayerMove(targetCol, targetRow);
+      }
 
       // Verificação do Tutorial Passo 2 (Teletransporte para o bloco amarelo 3, 3)
       if (gameState.difficulty === 'Facil' && tutorialStep === 2) {
@@ -236,7 +242,19 @@ export default function App() {
     if (parsedCurrent.bomba?.col && parsedCurrent.bomba?.row) {
       if (!parsedCommitted.bomba || parsedCurrent.bomba.col !== parsedCommitted.bomba.col || parsedCurrent.bomba.row !== parsedCommitted.bomba.row) {
         setBombCountdown(5);
-        setBombThrowTrigger(Date.now());
+        const throwStart = Date.now();
+        setBombThrowTrigger(throwStart);
+        const pCol = targetCol || gameState.lastPlayerPos.current.col;
+        const pRow = targetRow || gameState.lastPlayerPos.current.row;
+        const pPos3D = gridToPosition3D(pCol, pRow, gameState.arenaSize);
+        setActivePlayerBomb({
+          id: `bomb-${throwStart}`,
+          startTime: throwStart,
+          throwerPos: pPos3D,
+          targetCol: parsedCurrent.bomba.col,
+          targetRow: parsedCurrent.bomba.row
+        });
+        soundManager.playBombLaunch();
       }
     }
 
@@ -277,22 +295,27 @@ export default function App() {
     }
   }, [bombCountdown]);
 
-  // Dano da bomba do jogador antecipado para 4.5s (0.5s antes do final da animação de 5s)
-  const committedCssCodeRef = useRef(committedCssCode);
+  // Dano e impacto da bomba ativa do jogador (4.5s após lançamento, garantido mesmo se o jogador mover)
   useEffect(() => {
-    committedCssCodeRef.current = committedCssCode;
-  }, [committedCssCode]);
+    if (!activePlayerBomb) return;
+    const now = Date.now();
+    const elapsed = now - activePlayerBomb.startTime;
+    const delay = Math.max(0, 4500 - elapsed);
+    const finishDelay = Math.max(0, 5000 - elapsed);
 
-  useEffect(() => {
-    if (!bombThrowTrigger) return;
-    const t = setTimeout(() => {
-      const parsed = parsePlayerCode(committedCssCodeRef.current || committedCssCode);
-      if (parsed.bomba?.col && parsed.bomba?.row) {
-        gameState.fireBomb(parsed.bomba.col, parsed.bomba.row);
-      }
-    }, 4500);
-    return () => clearTimeout(t);
-  }, [bombThrowTrigger]);
+    const hitTimer = setTimeout(() => {
+      gameState.fireBomb(activePlayerBomb.targetCol, activePlayerBomb.targetRow);
+    }, delay);
+
+    const endTimer = setTimeout(() => {
+      setActivePlayerBomb(null);
+    }, finishDelay);
+
+    return () => {
+      clearTimeout(hitTimer);
+      clearTimeout(endTimer);
+    };
+  }, [activePlayerBomb?.id]);
 
   // ── Interação com o Piso (Clique para Cheatsheet ou Menu Radial) ──
   const handleTileClick = (col, row, e) => {
@@ -313,12 +336,21 @@ export default function App() {
     const playerRow = gameState.lastParsedPos?.row || gameState.lastPlayerPos?.current?.row || 1;
 
     if (action === 'teleport') {
-      const newCode = `.player {\n  grid-column: ${col};\n  grid-row: ${row};\n}\n\n.bomba {\n\n}\n\n.sniper {\n\n}`;
+      let newCode = `.player {\n  grid-column: ${col};\n  grid-row: ${row};\n}\n\n`;
+      if (activePlayerBomb) {
+        newCode += `.bomba {\n  grid-column: ${activePlayerBomb.targetCol};\n  grid-row: ${activePlayerBomb.targetRow};\n}\n\n`;
+      } else {
+        newCode += `.bomba {\n\n}\n\n`;
+      }
+      newCode += `.sniper {\n\n}`;
       setCssCode(newCode);
       setCommittedCssCode(newCode);
 
       gameState.lastPlayerPos.current = { col, row };
       gameState.setLastParsedPos({ col, row });
+      if (gameState.recordPlayerMove) {
+        gameState.recordPlayerMove(col, row);
+      }
       soundManager.playMove();
 
       if (gameState.difficulty === 'Facil' && tutorialStep === 2) {
@@ -336,7 +368,16 @@ export default function App() {
       setCssCode(newCode);
       setCommittedCssCode(newCode);
       setBombCountdown(5);
-      setBombThrowTrigger(Date.now());
+      const throwStart = Date.now();
+      setBombThrowTrigger(throwStart);
+      const pPos3D = gridToPosition3D(playerCol, playerRow, gameState.arenaSize);
+      setActivePlayerBomb({
+        id: `bomb-${throwStart}`,
+        startTime: throwStart,
+        throwerPos: pPos3D,
+        targetCol: col,
+        targetRow: row
+      });
       soundManager.playBombLaunch();
     } else if (action === 'sniper') {
       const newCode = `.player {\n  grid-column: ${playerCol};\n  grid-row: ${playerRow};\n}\n\n.bomba {\n\n}\n\n.sniper {\n  grid-column: ${col};\n  grid-row: ${row};\n}`;
@@ -682,6 +723,7 @@ export default function App() {
               tutorialStep={tutorialStep}
               currentLevel={gameState.currentLevel}
               highlightTiles={tutorialHighlightTiles}
+              activePlayerBomb={activePlayerBomb}
             />
 
             {/* ── BLOCO DE CONVERSA DO PERSONAGEM (Substituindo a TV) ── */}
